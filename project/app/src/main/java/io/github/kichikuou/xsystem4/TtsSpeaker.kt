@@ -69,10 +69,14 @@ class TtsSpeaker(private val appContext: Context) {
     /** Как именно «листать» (задаёт активити: синтетический тап в SDL-поверхность). */
     var advance: () -> Unit = {}
     private var advanceGeneration = 0
-    private var startedCounter = 0
+    private var emitSeq = 0
+    private companion object { const val MAX_ADVANCE_TAPS = 6 }
+    @Volatile var paused = false
+        private set
     private var utterance = 0
     private var lastSpeaker: String? = null
     private var pendingSpeaker: String? = null
+    private var lastLineText: String? = null   // для возобновления после паузы
     private var activeUtterances = 0
     private var flushOnNextLine = false
 
@@ -87,16 +91,15 @@ class TtsSpeaker(private val appContext: Context) {
     private val progress = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) {
             main.post {
-                advanceGeneration++   // отменить отложенное авто-листание
-                startedCounter++
+                advanceGeneration++   // отменить отложенную «прокачку» листания
                 if (activeUtterances++ == 0 && duckMusic)
                     NativeBridge.duck(true, duckPercent)
             }
         }
-        override fun onDone(utteranceId: String?) = finished()
+        override fun onDone(utteranceId: String?) = finished(utteranceId)
         @Deprecated("Deprecated in Java")
-        override fun onError(utteranceId: String?) = finished()
-        private fun finished() {
+        override fun onError(utteranceId: String?) = finished(utteranceId)
+        private fun finished(id: String?) {
             main.post {
                 if (--activeUtterances <= 0) {
                     activeUtterances = 0
@@ -167,6 +170,7 @@ class TtsSpeaker(private val appContext: Context) {
 
     fun setEnabled(on: Boolean) {
         enabled = on
+        paused = false
         if (!on) {
             tts?.stop()
             main.post {
@@ -176,29 +180,42 @@ class TtsSpeaker(private val appContext: Context) {
         }
     }
 
+    /** Пауза: остановить речь, замереть (не читать/не листать). */
+    fun pause() {
+        paused = true
+        advanceGeneration++
+        tts?.stop()
+        main.post {
+            activeUtterances = 0
+            NativeBridge.duck(false, duckPercent)
+        }
+    }
+
+    /** Возобновить: перечитать текущий бокс и продолжить. */
+    fun resume() {
+        paused = false
+        val t = lastLineText ?: return
+        main.post {
+            flushOnNextLine = true
+            if (enqueue(t) == 0 && activeUtterances == 0) scheduleAdvance()
+        }
+    }
+
     /** Вызывается из потока VM (через NativeBridge). */
     fun speak(text: String) {
-        if (!enabled || !ready) return
+        if (!enabled || !ready || paused) return
         TtsSegmenter.speakerOf(text)?.let { pendingSpeaker = it; return }
+        lastLineText = text
         main.post {
+            emitSeq++   // пришёл новый текст от движка (для «прокачки» листания)
             pendingSpeaker?.let { name ->
                 if (name != lastSpeaker) enqueue(name)
                 lastSpeaker = name
                 pendingSpeaker = null
             }
             // строку нечем озвучить (нет голоса/одни символы) — не стопорить авто-листание
-            if (enqueue(text) == 0 && activeUtterances == 0) {
+            if (enqueue(text) == 0 && activeUtterances == 0)
                 scheduleAdvance()
-            } else if (autoAdvance) {
-                // сторожок: движок принял фразу, но так и не начал говорить
-                // (напр. нет голосовой модели) — листаем через таймаут
-                val started = startedCounter
-                main.postDelayed({
-                    if (startedCounter == started && activeUtterances == 0 &&
-                        autoAdvance && enabled)
-                        advance()
-                }, 4000)
-            }
         }
     }
 
@@ -209,17 +226,34 @@ class TtsSpeaker(private val appContext: Context) {
     }
 
     /**
-     * Авто-листание: очередь опустела — через полсекунды, если ничего нового
-     * не заговорило (между фразами одной страницы бывает мгновенный «ноль»),
-     * шлём игре «дальше». Генерация отсекает устаревшие отложенные проверки.
+     * Авто-листание. Проблема: длинная реплика приходит движку одной строкой
+     * (одна фраза TTS), но на экране может не влезть в бокс и показываться в
+     * нескольких боксах — каждый требует своего тапа. TTS отговаривает один раз,
+     * поэтому после чтения «прокачиваем» тапы: шлём тап, и если новый текст не
+     * появился (перелистнулся внутренний бокс той же реплики) — шлём ещё, пока
+     * не придёт новая реплика (её озвучка сама продолжит цепочку) или не исчерпан
+     * лимит. advanceGeneration отменяет прокачку, когда началась новая речь.
      */
     private fun scheduleAdvance() {
         if (!autoAdvance || !enabled) return
         val gen = ++advanceGeneration
+        main.postDelayed({ pumpAdvance(gen, 0) }, 500)
+    }
+
+    private fun pumpAdvance(gen: Int, taps: Int) {
+        if (gen != advanceGeneration || !enabled || !autoAdvance) return
+        if (activeUtterances > 0) return          // пошла новая речь — она продолжит
+        if (taps >= MAX_ADVANCE_TAPS) return
+        val before = emitSeq
+        advance()                                  // один тап
         main.postDelayed({
-            if (gen == advanceGeneration && activeUtterances == 0 && enabled && autoAdvance)
-                advance()
-        }, 500)
+            if (gen != advanceGeneration || !enabled || !autoAdvance) return@postDelayed
+            if (emitSeq == before && activeUtterances == 0) {
+                // новый текст не появился → это был внутренний бокс той же реплики
+                pumpAdvance(gen, taps + 1)
+            }
+            // иначе появилась новая реплика — её onStart уже сбросил поколение
+        }, 700)
     }
 
     /** @return сколько фраз реально встало в очередь TTS. */

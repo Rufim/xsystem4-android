@@ -53,40 +53,72 @@ class CheatPanel(private val activity: Activity, private val prefs: SharedPrefer
         inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
     }
 
-    val view: LinearLayout = LinearLayout(activity).apply {
+    // элементы ввода (поиск/фильтр/статус)
+    private val controls = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
-
-        // строка поиска по значению
         addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(scanInput, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(Button(activity).apply {
-                text = "Поиск"
-                setOnClickListener { scan(narrow = false) }
+                text = "Поиск"; setOnClickListener { scan(narrow = false) }
             })
             addView(Button(activity).apply {
-                text = "Сузить"
-                setOnClickListener { scan(narrow = true) }
+                text = "Сузить"; setOnClickListener { scan(narrow = true) }
             })
         })
-        // строка фильтра по имени
         addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(filterInput, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(Button(activity).apply {
-                text = "Список"
-                setOnClickListener { reload() }
+                text = "Список"; setOnClickListener { reload() }
             })
         })
         addView(info)
-        addView(ListView(activity).apply {
-            adapter = this@CheatPanel.adapter
-            setOnItemClickListener { _, _, pos, _ -> edit(rows[pos]) }
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    // список значений переменных
+    private val list = ListView(activity).apply {
+        adapter = this@CheatPanel.adapter
+        setOnItemClickListener { _, _, pos, _ -> edit(rows[pos]) }
+    }
+
+    private fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
+
+    private fun divider(horizontal: Boolean) = android.view.View(activity).apply {
+        setBackgroundColor(Color.rgb(80, 90, 110))
+        layoutParams = if (horizontal)
+            LinearLayout.LayoutParams(dp(2), ViewGroup.LayoutParams.MATCH_PARENT)
+                .apply { leftMargin = dp(8); rightMargin = dp(8) }
+        else
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2))
+                .apply { topMargin = dp(6); bottomMargin = dp(6) }
+    }
+
+    /**
+     * Ландшафт: элементы ввода слева, список значений справа, между ними разделитель.
+     * Портрет: ввод сверху, список снизу.
+     */
+    val view: LinearLayout = LinearLayout(activity).apply {
+        val landscape = activity.resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        if (landscape) {
+            orientation = LinearLayout.HORIZONTAL
+            addView(controls, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 2f))
+            addView(divider(true))
+            addView(list, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 3f))
+        } else {
+            orientation = LinearLayout.VERTICAL
+            addView(controls)
+            addView(divider(false))
+            addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
     }
 
     /** Хук для перевода имён (Task ML Kit); по умолчанию — без перевода. */
     var translateNames: ((List<Row>, () -> Unit) -> Unit)? = null
+
+    /** Добавить элемент (напр. переключатель перевода) в начало блока ввода. */
+    fun prependControl(v: android.view.View) = controls.addView(v, 0)
 
     private fun parse(lines: Array<String>): List<Row> = lines.mapNotNull {
         val p = it.split('\t')

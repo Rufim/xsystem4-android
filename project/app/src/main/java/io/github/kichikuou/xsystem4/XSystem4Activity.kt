@@ -59,27 +59,52 @@ class XSystem4Activity : SDLActivity() {
         panel.addButton("Озвучка (TTS)") { showTtsDialog() }
         panel.addButton("Читы") { showCheatsDialog() }
 
+        // Плавающая кнопка play/pause (видна только при включённом TTS)
+        playPause = Button(this).apply {
+            text = "⏸"
+            textSize = 22f
+            setTextColor(android.graphics.Color.WHITE)
+            setBackgroundColor(android.graphics.Color.argb(170, 30, 34, 48))
+            setOnClickListener {
+                if (tts.paused) { tts.resume(); text = "⏸" }
+                else { tts.pause(); text = "▶" }
+            }
+        }
+        overlay.addView(playPause, FrameLayout.LayoutParams(dpToPx(52), dpToPx(52),
+            android.view.Gravity.START or android.view.Gravity.BOTTOM).apply {
+            leftMargin = dpToPx(12); bottomMargin = dpToPx(12)
+        })
+        updatePlayPauseVisibility(ttsOn)
+
         NativeBridge.setTts(ttsOn)
         tts.setEnabled(ttsOn)
     }
 
     private lateinit var panel: EdgePanel
+    private lateinit var playPause: Button
     private var nameTranslator: NameTranslator? = null
+
+    private fun updatePlayPauseVisibility(ttsOn: Boolean) {
+        if (::playPause.isInitialized) {
+            playPause.visibility = if (ttsOn) android.view.View.VISIBLE else android.view.View.GONE
+            if (ttsOn) playPause.text = if (tts.paused) "▶" else "⏸"
+        }
+    }
 
     private fun showTtsDialog() {
         val prefs = panel.prefs
         val root = android.widget.ScrollView(this)
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(20), dpToPx(20), dpToPx(20), dpToPx(20))
+            setPadding(dpToPx(8), 0, dpToPx(8), dpToPx(12))
             setBackgroundColor(android.graphics.Color.rgb(24, 27, 38))
         }
         root.addView(col)
 
-        col.addView(dialogTitle("Озвучка (TTS)"))
         col.addView(makeSwitch("Читать текст", prefs.getBoolean("tts", false)) { on ->
             prefs.edit().putBoolean("tts", on).apply()
             NativeBridge.setTts(on); tts.setEnabled(on)
+            updatePlayPauseVisibility(on)
         })
         col.addView(makeSwitch("Приглушать музыку", prefs.getBoolean("duck", true)) { on ->
             prefs.edit().putBoolean("duck", on).apply(); tts.duckMusic = on
@@ -159,20 +184,14 @@ class XSystem4Activity : SDLActivity() {
         tts.onReady = { fillVoices() }
         fillVoices()
 
-        showFullscreenDialog(root)
+        showFullscreenDialog("Озвучка (TTS)", root)
     }
 
     private fun showCheatsDialog() {
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(20), dpToPx(12), dpToPx(20), dpToPx(12))
-            setBackgroundColor(android.graphics.Color.rgb(24, 27, 38))
-        }
-        col.addView(dialogTitle("Читы"))
         val cheats = CheatPanel(this, panel.prefs)
 
-        // Переключатель перевода имён (ML Kit, опционально)
-        col.addView(makeSwitch("Переводить имена (ML Kit)",
+        // Переключатель перевода имён (ML Kit) — в блоке ввода читов
+        cheats.prependControl(makeSwitch("Переводить имена (ML Kit)",
                 panel.prefs.getBoolean("translate_names", false)) { on ->
             if (on) {
                 if (nameTranslator == null) nameTranslator = NameTranslator()
@@ -197,10 +216,8 @@ class XSystem4Activity : SDLActivity() {
             }
         })
 
-        col.addView(cheats.view, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         cheats.reload()
-        showFullscreenDialog(col)
+        showFullscreenDialog("Читы", cheats.view)
     }
 
     /** Подпись + SeekBar в стиле «Музыка при чтении». value/range в целых (напр. процентах). */
@@ -229,29 +246,36 @@ class XSystem4Activity : SDLActivity() {
         })
     }
 
-    private fun dialogTitle(t: String) = TextView(this).apply {
-        text = t; textSize = 22f
-        setTextColor(android.graphics.Color.WHITE)
-        setPadding(0, 0, 0, dpToPx(16))
-    }
-
     private fun dialogLabel(t: String) = TextView(this).apply {
         text = t; textSize = 15f
         setTextColor(android.graphics.Color.rgb(180, 190, 210))
         setPadding(0, dpToPx(16), 0, dpToPx(4))
     }
 
-    private fun showFullscreenDialog(content: View) {
+    private fun showFullscreenDialog(title: String, content: View) {
         val dlg = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val wrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(android.graphics.Color.rgb(24, 27, 38))
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
         }
-        wrap.addView(Button(this).apply {
-            text = "← Закрыть"
-            setOnClickListener { dlg.dismiss() }
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        // шапка: стрелка «назад» + заголовок в одну строку
+        wrap.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(android.widget.ImageButton(this@XSystem4Activity).apply {
+                setImageResource(R.drawable.ic_arrow_back)
+                background = null
+                setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
+                contentDescription = "Назад"
+                setOnClickListener { dlg.dismiss() }
+            }, LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)))
+            addView(TextView(this@XSystem4Activity).apply {
+                text = title; textSize = 20f
+                setTextColor(android.graphics.Color.WHITE)
+                setPadding(dpToPx(12), 0, 0, 0)
+            })
+        })
         wrap.addView(content, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT))
         dlg.setContentView(wrap)
