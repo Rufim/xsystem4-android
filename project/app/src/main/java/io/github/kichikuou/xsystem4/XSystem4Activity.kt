@@ -10,6 +10,7 @@ import android.widget.RelativeLayout
 import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
 import org.libsdl.app.SDLActivity
 
 // Intent for this activity must have the following extras:
@@ -63,6 +64,7 @@ class XSystem4Activity : SDLActivity() {
     }
 
     private lateinit var panel: EdgePanel
+    private var nameTranslator: NameTranslator? = null
 
     private fun showTtsDialog() {
         val prefs = panel.prefs
@@ -168,6 +170,33 @@ class XSystem4Activity : SDLActivity() {
         }
         col.addView(dialogTitle("Читы"))
         val cheats = CheatPanel(this, panel.prefs)
+
+        // Переключатель перевода имён (ML Kit, опционально)
+        col.addView(makeSwitch("Переводить имена (ML Kit)",
+                panel.prefs.getBoolean("translate_names", false)) { on ->
+            if (on) {
+                if (nameTranslator == null) nameTranslator = NameTranslator()
+                nameTranslator!!.ensureModel { ready ->
+                    if (ready) {
+                        panel.prefs.edit().putBoolean("translate_names", true).apply()
+                        cheats.translateNames = { rows, done ->
+                            rows.forEach { r ->
+                                nameTranslator!!.translate(r.name) { r.display = it; done() }
+                            }
+                        }
+                        cheats.reload()
+                    } else {
+                        Toast.makeText(this, "Модель перевода недоступна (нет сети/сервисов Google)",
+                            Toast.LENGTH_LONG).show()
+                    }
+                }
+            } else {
+                panel.prefs.edit().putBoolean("translate_names", false).apply()
+                cheats.translateNames = null
+                cheats.reload()
+            }
+        })
+
         col.addView(cheats.view, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         cheats.reload()
@@ -289,6 +318,7 @@ class XSystem4Activity : SDLActivity() {
 
     override fun onDestroy() {
         if (::tts.isInitialized) tts.shutdown()
+        nameTranslator?.close()
         super.onDestroy()
     }
 
