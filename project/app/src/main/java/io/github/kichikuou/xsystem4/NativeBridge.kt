@@ -28,8 +28,19 @@ object NativeBridge {
         pageListener?.invoke()
     }
 
+    // --- Читы ---
+    /** Строки "pageSlot\tvarno\tname\tvalue". */
+    fun cheatList(filter: String): Array<String> = nativeCheatList(filter)
+    /** [0]="TOTAL:<n>", далее строки переменных. */
+    fun cheatScan(value: Int, narrow: Boolean): Array<String> = nativeCheatScan(value, narrow)
+    fun cheatWrite(pageSlot: Int, varno: Int, value: Int): Boolean =
+        nativeCheatWrite(pageSlot, varno, value)
+
     private external fun nativeInit()
     private external fun nativeSetTts(on: Boolean)
     private external fun nativeDuckMusic(on: Boolean, percent: Int)
     private external fun nativeAdvance()
+    private external fun nativeCheatList(filter: String): Array<String>
+    private external fun nativeCheatScan(value: Int, narrow: Boolean): Array<String>
+    private external fun nativeCheatWrite(pageSlot: Int, varno: Int, value: Int): Boolean
 }

@@ -163,14 +163,14 @@ class XSystem4Activity : SDLActivity() {
     private fun showCheatsDialog() {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(20), dpToPx(20), dpToPx(20), dpToPx(20))
+            setPadding(dpToPx(20), dpToPx(12), dpToPx(20), dpToPx(12))
             setBackgroundColor(android.graphics.Color.rgb(24, 27, 38))
         }
         col.addView(dialogTitle("Читы"))
-        col.addView(TextView(this).apply {
-            text = "В разработке."
-            setTextColor(android.graphics.Color.WHITE)
-        })
+        val cheats = CheatPanel(this, panel.prefs)
+        col.addView(cheats.view, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        cheats.reload()
         showFullscreenDialog(col)
     }
 
