@@ -1,3 +1,6 @@
 [submodule "xsystem4"]
 	path = xsystem4
 	url = https://github.com/Rufim/xsystem4.git
+[submodule "xsystem35"]
+	path = xsystem35
+	url = https://github.com/Rufim/xsystem35-sdl2.git
