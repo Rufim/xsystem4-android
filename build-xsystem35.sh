@@ -38,6 +38,9 @@ for abi in ${ABI_NAMES}; do
     cp "$B/_deps/sdl-build/libSDL2.so"           "$DEST/${abi}/"   # единый SDL2 2.32.10
     cp "$B/_deps/sdl_ttf-build/libSDL2_ttf.so"   "$DEST/${abi}/"
     cp "$B/_deps/sdl_mixer-build/libSDL2_mixer.so" "$DEST/${abi}/"
+    # libxsystem35.so линкует webp динамически (+ его зависимость sharpyuv)
+    cp "$B/_deps/libwebp-build/libwebp.so"       "$DEST/${abi}/"
+    cp "$B/_deps/libwebp-build/libsharpyuv.so"   "$DEST/${abi}/"
 done
 
 # Шрифты xsystem35 в assets приложения (System 3.x рендерит текст через SDL_ttf)
