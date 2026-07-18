@@ -22,6 +22,8 @@ object NativeBridge {
     /** Номера сценарных страниц (через запятую), текст которых не озвучивать
      *  (только xsystem35 — метод есть лишь в его .so). */
     fun setSuppressPages(pages: String) = nativeSetSuppressPages(pages)
+    /** Открыть встроенное меню движка (громкость/пропуск/…); только xsystem35. */
+    fun openEngineMenu() = nativeOpenEngineMenu()
 
     /** Зовётся из потока VM (android_bridge.c). */
     @JvmStatic
@@ -55,6 +57,7 @@ object NativeBridge {
     private external fun nativeAdvance()
     private external fun nativeUiDrawCount(): Int
     private external fun nativeSetSuppressPages(pages: String)
+    private external fun nativeOpenEngineMenu()
     private external fun nativeCheatList(filter: String): Array<String>
     private external fun nativeCheatScan(value: Int, narrow: Boolean): Array<String>
     private external fun nativeCheatWrite(pageSlot: Int, varno: Int, value: Int): Boolean

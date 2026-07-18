@@ -71,6 +71,7 @@ abstract class EngineActivity : SDLActivity() {
         this.panel = panel
         panel.addButton("Озвучка (TTS)") { showTtsDialog() }
         panel.addButton("Читы") { showCheatsDialog() }
+        onPanelSetup(panel)   // движко-специфичные кнопки (напр. меню движка у System 3.x)
 
         // Плавающая кнопка стоп/плей (видна только при включённом TTS)
         playPause = android.widget.ImageButton(this).apply {
@@ -405,6 +406,9 @@ abstract class EngineActivity : SDLActivity() {
 
     /** Значение «не читать страницы» по умолчанию (для конкретного движка/игры). */
     protected open fun defaultSuppressPages(): String = ""
+
+    /** Добавить движко-специфичные кнопки в боковую панель (по умолчанию — ничего). */
+    protected open fun onPanelSetup(panel: EdgePanel) {}
 
     /** Синтетический тап в центр игровой поверхности — «дальше» в диалоге
      *  (тот же путь, что палец; SDL-клавиши/SDL_PushEvent игру на Android не листают).
