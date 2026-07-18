@@ -58,9 +58,10 @@ abstract class EngineActivity : SDLActivity() {
         tts.duckMusic = duckOn
         tts.duckPercent = duckPct
 
-        // применить сохранённые движок, голос, темп и тон
+        // применить сохранённые движок, голоса (на каждый язык), темп и тон
         panel.prefs.getString("tts_engine", null)?.let { tts.setEngine(it) }
-        panel.prefs.getString("tts_ru_voice", null)?.let { tts.setRuVoice(it) }
+        for (lang in TTS_LANGS)
+            panel.prefs.getString("tts_voice_$lang", null)?.let { tts.setVoiceForLang(lang, it) }
         tts.setRate(panel.prefs.getInt("tts_rate", 100) / 100f)
         tts.setPitch(panel.prefs.getInt("tts_pitch", 100) / 100f)
         tts.autoAdvance = panel.prefs.getBoolean("auto_advance", false)
@@ -151,26 +152,67 @@ abstract class EngineActivity : SDLActivity() {
         // --- Выбор движка ---
         col.addView(dialogLabel("Движок озвучки"))
         val engineSpinner = android.widget.Spinner(this)
+        col.addView(engineSpinner)
+
+        // --- Язык + голос для него ---
+        col.addView(dialogLabel("Язык озвучки"))
+        val langSpinner = android.widget.Spinner(this)
+        col.addView(langSpinner)
+        col.addView(dialogLabel("Голос"))
         val voiceSpinner = android.widget.Spinner(this)
+        col.addView(voiceSpinner)
+
+        // Человекочитаемое имя языка по коду (на русском), иначе — сам код.
+        fun langLabel(code: String): String {
+            val disp = java.util.Locale(code).getDisplayLanguage(java.util.Locale("ru"))
+            return if (disp.isNotBlank() && !disp.equals(code, ignoreCase = true))
+                disp.replaceFirstChar { it.uppercase() } + " ($code)" else code
+        }
+        // текущий выбранный в диалоге язык (по умолчанию — первый доступный или ru)
+        var curLangs: List<String> = TTS_LANGS
+        var curLang: String = "ru"
+
         fun fillVoices() {
-            val voices = tts.ruVoices()
+            val voices = tts.voicesForLang(curLang)
             val names = listOf("(по умолчанию)") + voices.map { it.name }
             voiceSpinner.adapter = android.widget.ArrayAdapter(
                 this, android.R.layout.simple_spinner_item, names).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-            val cur = tts.currentRuVoiceName()
+            // подхватить сохранённый голос для языка, если ещё не загружен в память
+            val cur = tts.voiceForLang(curLang)
+                ?: prefs.getString("tts_voice_$curLang", null)?.also { tts.setVoiceForLang(curLang, it) }
             val idx = voices.indexOfFirst { it.name == cur }
             voiceSpinner.setSelection(if (idx >= 0) idx + 1 else 0)
             voiceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(p: android.widget.AdapterView<*>?, v: View?, pos: Int, id: Long) {
                     val name = if (pos == 0) null else voices[pos - 1].name
-                    tts.setRuVoice(name)
-                    prefs.edit().putString("tts_ru_voice", name).apply()
+                    tts.setVoiceForLang(curLang, name)
+                    prefs.edit().putString("tts_voice_$curLang", name).apply()
                 }
                 override fun onNothingSelected(p: android.widget.AdapterView<*>?) {}
             }
         }
+
+        fun fillLangs() {
+            curLangs = tts.availableLanguages().ifEmpty { TTS_LANGS }
+            if (curLang !in curLangs) curLang = curLangs.first()
+            langSpinner.adapter = android.widget.ArrayAdapter(
+                this, android.R.layout.simple_spinner_item,
+                curLangs.map { langLabel(it) }).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            langSpinner.setSelection(curLangs.indexOf(curLang).coerceAtLeast(0))
+            langSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: android.widget.AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                    curLang = curLangs[pos]
+                    fillVoices()
+                }
+                override fun onNothingSelected(p: android.widget.AdapterView<*>?) {}
+            }
+            fillVoices()
+        }
+
         val engines = tts.engines()
         val engineLabels = engines.map { it.label }
         engineSpinner.adapter = android.widget.ArrayAdapter(
@@ -188,13 +230,10 @@ abstract class EngineActivity : SDLActivity() {
             }
             override fun onNothingSelected(p: android.widget.AdapterView<*>?) {}
         }
-        col.addView(engineSpinner)
-        col.addView(dialogLabel("Голос (русский)"))
-        col.addView(voiceSpinner)
 
-        // список голосов обновляется по готовности движка (в т.ч. после смены)
-        tts.onReady = { fillVoices() }
-        fillVoices()
+        // списки языков/голосов обновляются по готовности движка (в т.ч. после смены)
+        tts.onReady = { fillLangs() }
+        fillLangs()
 
         showFullscreenDialog("Озвучка (TTS)", root)
     }

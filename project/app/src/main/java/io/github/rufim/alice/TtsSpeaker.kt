@@ -8,10 +8,25 @@ import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import java.util.Locale
 
-/** Совпадает ли локаль голоса с русским (движки кодируют язык как ru/rus). */
-private fun voiceMatchesRu(locale: Locale): Boolean {
-    val lang = locale.language.lowercase(Locale.ROOT)
-    return lang == "ru" || lang == "rus"
+/** Языки контента (коды сегментатора) — для них голос реально применяется. */
+val TTS_LANGS = listOf("ru", "ja", "en")
+
+/** Частые ISO-639-2 (3-буквенные) коды, которые Android отдаёт для голосов,
+ *  → ISO-639-1 (2-буквенные), чтобы совпадать с кодами сегментатора. */
+private val ISO3TO1 = mapOf(
+    "rus" to "ru", "jpn" to "ja", "eng" to "en", "kor" to "ko", "zho" to "zh",
+    "chi" to "zh", "fra" to "fr", "fre" to "fr", "deu" to "de", "ger" to "de",
+    "spa" to "es", "ita" to "it", "por" to "pt", "ukr" to "uk", "pol" to "pl",
+    "nld" to "nl", "dut" to "nl", "tur" to "tr", "ara" to "ar", "hin" to "hi",
+    "vie" to "vi", "tha" to "th", "ind" to "id", "ces" to "cs", "ell" to "el",
+    "swe" to "sv", "dan" to "da", "fin" to "fi", "nor" to "nb", "ron" to "ro",
+    "hun" to "hu", "heb" to "he"
+)
+
+/** Нормализованный код языка голоса (ISO-639-1, если известен). */
+fun normLang(code: String?): String {
+    val c = (code ?: "").lowercase(Locale.ROOT)
+    return ISO3TO1[c] ?: c
 }
 
 /** Разбивка строки на языковые сегменты и разбор имени говорящего. */
@@ -89,7 +104,8 @@ class TtsSpeaker(private val appContext: Context) {
 
     private var tts: TextToSpeech? = null
     private var currentEngine: String? = null
-    private var ruVoiceName: String? = null
+    /** Выбранный голос на каждый язык (ru/ja/en) — имя Voice.name. */
+    private val langVoice = HashMap<String, String>()
     @Volatile var speechRate = 1.0f
     @Volatile var speechPitch = 1.0f
     /** Колбэк готовности движка (для обновления списков в UI). */
@@ -127,7 +143,6 @@ class TtsSpeaker(private val appContext: Context) {
             ready = status == TextToSpeech.SUCCESS
             if (ready) {
                 tts?.setOnUtteranceProgressListener(progress)
-                applyRuVoice()
                 applyRatePitch()
                 main.post { onReady?.invoke() }
             }
@@ -147,23 +162,22 @@ class TtsSpeaker(private val appContext: Context) {
         createEngine(enginePkg)
     }
 
-    /** Русские голоса текущего движка (по локали). */
-    fun ruVoices(): List<Voice> = runCatching {
-        tts?.voices?.filter { voiceMatchesRu(it.locale) }?.sortedBy { it.name } ?: emptyList()
+    /** Голоса текущего движка для языка lang (нормализованный код). */
+    fun voicesForLang(lang: String): List<Voice> = runCatching {
+        tts?.voices?.filter { normLang(it.locale?.language) == lang }?.sortedBy { it.name } ?: emptyList()
     }.getOrDefault(emptyList())
 
-    fun currentRuVoiceName(): String? = ruVoiceName
+    /** Все языки, для которых у движка есть голоса (нормализованные коды, по алфавиту). */
+    fun availableLanguages(): List<String> = runCatching {
+        tts?.voices?.mapNotNull { it.locale?.language?.takeIf { l -> l.isNotBlank() } }
+            ?.map { normLang(it) }?.distinct()?.sorted() ?: emptyList()
+    }.getOrDefault(emptyList())
 
-    fun setRuVoice(name: String?) {
-        ruVoiceName = name
-        applyRuVoice()
-    }
+    fun voiceForLang(lang: String): String? = langVoice[lang]
 
-    private fun applyRuVoice() {
-        val t = tts ?: return
-        val name = ruVoiceName ?: return
-        runCatching { t.voices?.firstOrNull { it.name == name } }.getOrNull()
-            ?.let { t.voice = it }
+    fun setVoiceForLang(lang: String, name: String?) {
+        if (name.isNullOrBlank()) langVoice.remove(lang) else langVoice[lang] = name
+        // Голос применяется по-сегментно в enqueue (у каждой реплики свой язык).
     }
 
     /** Темп речи (0.5–2.0) и тон (0.5–2.0). Применяется сразу и при пересоздании движка. */
@@ -280,10 +294,11 @@ class TtsSpeaker(private val appContext: Context) {
         var mode = if (flushOnNextLine) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
         flushOnNextLine = false
         for ((lang, chunk) in TtsSegmenter.segments(text)) {
-            val ruVoice = if (lang == "ru" && ruVoiceName != null)
-                runCatching { t.voices?.firstOrNull { it.name == ruVoiceName } }.getOrNull() else null
-            if (ruVoice != null) {
-                t.voice = ruVoice
+            val voiceName = langVoice[lang]
+            val voice = if (voiceName != null)
+                runCatching { t.voices?.firstOrNull { it.name == voiceName } }.getOrNull() else null
+            if (voice != null) {
+                t.voice = voice
             } else {
                 t.language = when (lang) {
                     "ru" -> Locale("ru"); "ja" -> Locale.JAPANESE; else -> Locale.ENGLISH
