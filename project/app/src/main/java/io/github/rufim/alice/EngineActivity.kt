@@ -67,6 +67,7 @@ abstract class EngineActivity : SDLActivity() {
         tts.autoAdvance = panel.prefs.getBoolean("auto_advance", false)
         tts.advance = { advanceGame() }
         applySuppressPages(panel.prefs.getString("tts_suppress_pages", defaultSuppressPages())!!)
+        applyReadWindows(panel.prefs.getString("tts_read_windows", defaultReadWindows())!!)
 
         this.panel = panel
         panel.addButton("Озвучка (TTS)") { showTtsDialog() }
@@ -88,17 +89,40 @@ abstract class EngineActivity : SDLActivity() {
         })
         // держать значок в актуальном состоянии (в т.ч. при стопе из игрового «ПРОПУСК»)
         tts.onStoppedChanged = { updatePlayPauseIcon() }
+
+        // Отладочный оверлей: страница сценария и окно отображаемого текста
+        // (верхний правый угол). Помогает подобрать «Не читать страницы».
+        winIndicator = TextView(this).apply {
+            setTextColor(android.graphics.Color.YELLOW)
+            setBackgroundColor(android.graphics.Color.argb(160, 0, 0, 0))
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            textSize = 13f
+            text = "стр — · окно —"
+        }
+        overlay.addView(winIndicator, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+            android.view.Gravity.END or android.view.Gravity.TOP).apply {
+            topMargin = dpToPx(6); rightMargin = dpToPx(6)
+        })
+        NativeBridge.setWindowListener { w, p ->
+            runOnUiThread { winIndicator.text = "стр $p · окно $w" }
+        }
+
         updatePlayPauseVisibility(ttsOn)
 
         NativeBridge.setTts(ttsOn)
         tts.setEnabled(ttsOn)
     }
 
+    private lateinit var winIndicator: TextView
+
     private fun updatePlayPauseVisibility(ttsOn: Boolean) {
         if (::playPause.isInitialized) {
             playPause.visibility = if (ttsOn) android.view.View.VISIBLE else android.view.View.GONE
             if (ttsOn) updatePlayPauseIcon()
         }
+        if (::winIndicator.isInitialized)
+            winIndicator.visibility = if (ttsOn) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     private fun updatePlayPauseIcon() {
@@ -132,13 +156,31 @@ abstract class EngineActivity : SDLActivity() {
             textSize = 12f
             setTextColor(android.graphics.Color.rgb(150, 160, 180))
         })
+        // Читать только эти окна сообщений (окно диалога). Пусто — читать все.
+        // Исключает боевой лог/статус/меню, которые идут в другие окна.
+        col.addView(dialogLabel("Читать только окна (номера, пусто = все)"))
+        col.addView(android.widget.EditText(this).apply {
+            setText(prefs.getString("tts_read_windows", defaultReadWindows()))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            hint = "напр. 5"
+            setTextColor(android.graphics.Color.BLACK)   // фон поля светлый
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    val v = s?.toString()?.trim() ?: ""
+                    prefs.edit().putString("tts_read_windows", v).apply()
+                    applyReadWindows(v)
+                }
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
+        })
         // Не читать текст на указанных страницах (меню/статус). Пусто — читать всё.
         col.addView(dialogLabel("Не читать страницы (номера через запятую)"))
         col.addView(android.widget.EditText(this).apply {
             setText(prefs.getString("tts_suppress_pages", defaultSuppressPages()))
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             hint = "напр. 11"
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(android.graphics.Color.BLACK)   // фон поля светлый
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(s: android.text.Editable?) {
                     val v = s?.toString()?.trim() ?: ""
@@ -406,6 +448,12 @@ abstract class EngineActivity : SDLActivity() {
 
     /** Значение «не читать страницы» по умолчанию (для конкретного движка/игры). */
     protected open fun defaultSuppressPages(): String = ""
+
+    /** Читать только эти окна сообщений (по умолчанию — ничего = все окна). */
+    protected open fun applyReadWindows(csv: String) {}
+
+    /** Окна для озвучки по умолчанию (для конкретного движка/игры). */
+    protected open fun defaultReadWindows(): String = ""
 
     /** Добавить движко-специфичные кнопки в боковую панель (по умолчанию — ничего). */
     protected open fun onPanelSetup(panel: EdgePanel) {}

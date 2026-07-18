@@ -43,13 +43,13 @@ class CheatPanel(private val activity: Activity, private val prefs: SharedPrefer
     private val filterInput = EditText(activity).apply {
         hint = "фильтр по имени"
         setHintTextColor(Color.GRAY)
-        setTextColor(Color.WHITE)
+        setTextColor(Color.BLACK)   // фон поля светлый — текст чёрным, иначе не видно
     }
 
     private val scanInput = EditText(activity).apply {
         hint = "значение"
         setHintTextColor(Color.GRAY)
-        setTextColor(Color.WHITE)
+        setTextColor(Color.BLACK)
         inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
     }
 
@@ -155,6 +155,7 @@ class CheatPanel(private val activity: Activity, private val prefs: SharedPrefer
         val input = EditText(activity).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
             setText(row.value.toString())
+            setTextColor(Color.BLACK)   // фон диалога светлый — текст чёрным
         }
         AlertDialog.Builder(activity)
             .setTitle(row.display)
