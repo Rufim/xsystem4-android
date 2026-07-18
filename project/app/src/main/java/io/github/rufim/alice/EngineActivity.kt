@@ -66,6 +66,7 @@ abstract class EngineActivity : SDLActivity() {
         tts.setPitch(panel.prefs.getInt("tts_pitch", 100) / 100f)
         tts.autoAdvance = panel.prefs.getBoolean("auto_advance", false)
         tts.advance = { advanceGame() }
+        applySuppressPages(panel.prefs.getString("tts_suppress_pages", defaultSuppressPages())!!)
 
         this.panel = panel
         panel.addButton("Озвучка (TTS)") { showTtsDialog() }
@@ -129,6 +130,23 @@ abstract class EngineActivity : SDLActivity() {
             text = "Игровой режим АВТО лучше выключить — иначе он будет листать раньше голоса."
             textSize = 12f
             setTextColor(android.graphics.Color.rgb(150, 160, 180))
+        })
+        // Не читать текст на указанных страницах (меню/статус). Пусто — читать всё.
+        col.addView(dialogLabel("Не читать страницы (номера через запятую)"))
+        col.addView(android.widget.EditText(this).apply {
+            setText(prefs.getString("tts_suppress_pages", defaultSuppressPages()))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            hint = "напр. 11"
+            setTextColor(android.graphics.Color.WHITE)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    val v = s?.toString()?.trim() ?: ""
+                    prefs.edit().putString("tts_suppress_pages", v).apply()
+                    applySuppressPages(v)
+                }
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
         })
         // Музыка при чтении: 0..100 %
         addSlider(col, "Музыка при чтении", prefs.getInt("duck_pct", 15), 0..100,
@@ -380,6 +398,13 @@ abstract class EngineActivity : SDLActivity() {
     /** Как «листать» диалог при авто-режиме. По умолчанию — синтетический тап
      *  (для xsystem4; SDL-клавиши там не листают). Подклассы могут переопределить. */
     protected open fun advanceGame() = synthesizeTap()
+
+    /** Не озвучивать текст на этих сценарных страницах (меню/статус). По умолчанию —
+     *  ничего; xsystem35 переопределяет (поддержка через texthook движка). */
+    protected open fun applySuppressPages(pages: String) {}
+
+    /** Значение «не читать страницы» по умолчанию (для конкретного движка/игры). */
+    protected open fun defaultSuppressPages(): String = ""
 
     /** Синтетический тап в центр игровой поверхности — «дальше» в диалоге
      *  (тот же путь, что палец; SDL-клавиши игру на Android не листают). */

@@ -36,6 +36,14 @@ class XSystem35Activity : EngineActivity() {
         NativeBridge.advance()
     }
 
+    // Подавление озвучки по номерам страниц (movie/меню/статус) — есть в мосте
+    // только у xsystem35. По умолчанию для Daiakuji — страница 11 (титул/хаб «35Y…»).
+    override fun applySuppressPages(pages: String) {
+        NativeBridge.setSuppressPages(pages)
+    }
+
+    override fun defaultSuppressPages(): String = "11"
+
     override fun getArguments(): Array<String> {
         return arrayOf(
             "-gamedir", intent.getStringExtra(EXTRA_GAME_ROOT)!!,
