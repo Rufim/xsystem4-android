@@ -1,4 +1,9 @@
 # xsystem4-android
+
+> **Форк (xsystems):** это приложение расширено до единого лаунчера для **двух**
+> движков — xsystem4 (System 4) и xsystem35 (System 3.x), с озвучкой ADV-текста
+> (TTS) и читами. Подробности: [docs/UNIFIED_APP.md](docs/UNIFIED_APP.md).
+
 This is a work-in-progress Android port of
 [xsystem4](https://github.com/nunuhara/xsystem4).
 
