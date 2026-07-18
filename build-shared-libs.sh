@@ -22,3 +22,7 @@ for abi in ${ABI_NAMES}; do
     ninja -C build/${abi} install
     ./collect-licenses.sh build/${abi} project/app/src/main/assets/licenses
 done
+
+# Второй движок: xsystem35 (System 3.x). Собирает libxsystem35.so + единый
+# libSDL2.so 2.32.10/ttf/mixer и кладёт в те же jniLibs.
+"$(dirname "$0")/build-xsystem35.sh"
