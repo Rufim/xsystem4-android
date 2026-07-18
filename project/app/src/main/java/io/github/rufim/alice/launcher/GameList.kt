@@ -148,6 +148,8 @@ class GameList(activity: Activity) {
     private val storageDirs: ArrayList<File> = arrayListOf()
     operator fun get(index: Int): Item = items[index]
     val size: Int get() = items.size
+    /** Иммутабельный снимок списка (для Compose-состояния). */
+    fun snapshot(): List<Item> = items.toList()
     var observer: GameListObserver? = null
     var isInstalling = false
         private set
