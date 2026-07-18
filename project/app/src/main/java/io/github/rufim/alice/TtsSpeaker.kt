@@ -124,11 +124,17 @@ class TtsSpeaker(private val appContext: Context) {
         override fun onError(utteranceId: String?) = finished(utteranceId)
         private fun finished(id: String?) {
             main.post {
-                if (--activeUtterances <= 0) {
+                if (activeUtterances > 0) activeUtterances--
+                // Не полагаемся на точную парность onStart/onDone: движок может НЕ
+                // прислать onDone промежуточной реплики (напр. имя говорящего перед
+                // текстом), тогда счётчик завис бы и листание встало. Решаем по
+                // фактическому состоянию TTS через небольшой дебаунс.
+                main.postDelayed({
+                    if (tts?.isSpeaking == true) return@postDelayed
                     activeUtterances = 0
                     NativeBridge.duck(false, duckPercent)
                     scheduleAdvance()
-                }
+                }, 250)
             }
         }
     }

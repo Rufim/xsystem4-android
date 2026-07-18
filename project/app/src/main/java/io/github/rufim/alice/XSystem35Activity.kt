@@ -30,12 +30,6 @@ class XSystem35Activity : EngineActivity() {
         return arrayOf("SDL2", "xsystem35")
     }
 
-    // System 3.x надёжно листается клавишей RETURN (в отличие от xsystem4),
-    // поэтому шлём нативный RETURN через мост, а не синтетический тап.
-    override fun advanceGame() {
-        NativeBridge.advance()
-    }
-
     // Подавление озвучки по номерам страниц (movie/меню/статус) — есть в мосте
     // только у xsystem35. По умолчанию для Daiakuji — страница 11 (титул/хаб «35Y…»).
     override fun applySuppressPages(pages: String) {

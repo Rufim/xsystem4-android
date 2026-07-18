@@ -407,20 +407,25 @@ abstract class EngineActivity : SDLActivity() {
     protected open fun defaultSuppressPages(): String = ""
 
     /** Синтетический тап в центр игровой поверхности — «дальше» в диалоге
-     *  (тот же путь, что палец; SDL-клавиши игру на Android не листают). */
+     *  (тот же путь, что палец; SDL-клавиши/SDL_PushEvent игру на Android не листают).
+     *  UP шлём с реальной паузой: движок откладывает применение состояния касания
+     *  (TOUCH_EVENT_DELAY), поэтому мгновенный down+up теряется на опросе keywait. */
     private fun synthesizeTap() {
         val surface = mSurface ?: return
         val x = surface.width * 0.5f
-        val y = surface.height * 0.45f
-        val now = android.os.SystemClock.uptimeMillis()
+        val y = surface.height * 0.5f
+        val t0 = android.os.SystemClock.uptimeMillis()
         val down = android.view.MotionEvent.obtain(
-            now, now, android.view.MotionEvent.ACTION_DOWN, x, y, 0)
-        val up = android.view.MotionEvent.obtain(
-            now, now + 30, android.view.MotionEvent.ACTION_UP, x, y, 0)
+            t0, t0, android.view.MotionEvent.ACTION_DOWN, x, y, 0)
         surface.dispatchTouchEvent(down)
-        surface.dispatchTouchEvent(up)
         down.recycle()
-        up.recycle()
+        surface.postDelayed({
+            val t1 = android.os.SystemClock.uptimeMillis()
+            val up = android.view.MotionEvent.obtain(
+                t0, t1, android.view.MotionEvent.ACTION_UP, x, y, 0)
+            surface.dispatchTouchEvent(up)
+            up.recycle()
+        }, 120)
     }
 
     override fun onDestroy() {
