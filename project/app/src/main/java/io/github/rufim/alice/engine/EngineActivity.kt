@@ -94,7 +94,7 @@ abstract class EngineActivity : SDLActivity() {
             add(PanelAction("Читы") { showCheats() })
             addAll(extraPanelActions())
         }
-        ComposeOverlay.attach(mLayout) {
+        ComposeOverlay.attach(this, mLayout) {
             EnginePanelOverlay(
                 state = panelState,
                 actions = actions,

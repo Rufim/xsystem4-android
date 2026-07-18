@@ -64,10 +64,13 @@ object ComposeOverlay {
         return dlg
     }
 
-    /** Постоянный Compose-оверлей внутри layout'а игры (панель, индикаторы). */
-    fun attach(parent: android.view.ViewGroup, content: @Composable () -> Unit): ComposeView {
+    /** Постоянный Compose-оверлей внутри layout'а игры (панель, индикаторы).
+     *  Владельцы ставятся на decorView окна: Compose ищет их от корня дерева. */
+    fun attach(activity: Activity, parent: android.view.ViewGroup,
+               content: @Composable () -> Unit): ComposeView {
         val owner = OverlayOwner()
-        val view = ComposeView(parent.context)
+        activity.window?.decorView?.let { owner.attachTo(it) }
+        val view = ComposeView(activity)
         owner.attachTo(view)
         view.setContent { AliceTheme(content) }
         parent.addView(view, android.view.ViewGroup.LayoutParams(
