@@ -2,6 +2,8 @@ package io.github.rufim.alice.engine
 
 import io.github.rufim.alice.R
 import io.github.rufim.alice.NativeBridge
+import io.github.rufim.alice.bridge.*
+import io.github.rufim.alice.history.*
 import io.github.rufim.alice.tts.*
 import io.github.rufim.alice.cheats.*
 import io.github.rufim.alice.launcher.*
@@ -55,9 +57,16 @@ abstract class EngineActivity : SDLActivity() {
         val panel = EdgePanel(this, overlay)
 
         tts = TtsSpeaker(this)
+        // Поток ADV-текста: NativeBridge → AdvRouter (разбор говорившего) →
+        // озвучка + история сообщений.
+        AdvRouter.onLine = { speaker, text ->
+            MessageHistory.add(speaker, text)
+            tts.speak(speaker, text)
+        }
+        AdvRouter.onPage = { tts.pageBreak() }
         NativeBridge.init(
-            { text, _ -> tts.speak(text) },
-            { tts.pageBreak() },
+            { text, _ -> AdvRouter.text(text) },
+            { AdvRouter.page() },
             { state -> if (state != 0) tts.stop() })   // игровой «ПРОПУСК» → стоп чтения
 
         val ttsOn = panel.prefs.getBoolean("tts", false)
@@ -81,6 +90,9 @@ abstract class EngineActivity : SDLActivity() {
 
         this.panel = panel
         panel.addButton("Озвучка (TTS)") { showTtsDialog() }
+        panel.addButton("История") {
+            ComposeOverlay.showFullscreen(this) { dismiss -> HistoryScreen(onBack = dismiss) }
+        }
         panel.addButton("Читы") { showCheatsDialog() }
         onPanelSetup(panel)   // движко-специфичные кнопки (напр. меню движка у System 3.x)
 

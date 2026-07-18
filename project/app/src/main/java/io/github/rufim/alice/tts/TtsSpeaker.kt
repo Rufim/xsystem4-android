@@ -105,7 +105,6 @@ class TtsSpeaker(private val appContext: Context) {
     var onStoppedChanged: (() -> Unit)? = null
     private var utterance = 0
     private var lastSpeaker: String? = null
-    private var pendingSpeaker: String? = null
     private var lastLineText: String? = null   // фраза для «плей» после стопа
     private var activeUtterances = 0
     private var flushOnNextLine = false
@@ -239,17 +238,16 @@ class TtsSpeaker(private val appContext: Context) {
         }
     }
 
-    /** Вызывается из потока VM (через NativeBridge). */
-    fun speak(text: String) {
-        TtsSegmenter.speakerOf(text)?.let { pendingSpeaker = it; return }
+    /** Вызывается из потока VM (через AdvRouter): реплика с уже разобранным
+     *  говорившим. Имя озвучивается только при смене говорившего. */
+    fun speak(speaker: String?, text: String) {
         lastLineText = text   // помним текущий бокс даже в стопе (для «плей»)
         if (!enabled || !ready || stopped) return
         main.post {
             emitSeq++   // пришёл новый текст от движка (для «прокачки» листания)
-            pendingSpeaker?.let { name ->
-                if (name != lastSpeaker) enqueue(name)
-                lastSpeaker = name
-                pendingSpeaker = null
+            if (speaker != null) {
+                if (speaker != lastSpeaker) enqueue(speaker)
+                lastSpeaker = speaker
             }
             // строку нечем озвучить (нет голоса/одни символы) — не стопорить авто-листание
             if (enqueue(text) == 0 && activeUtterances == 0)
