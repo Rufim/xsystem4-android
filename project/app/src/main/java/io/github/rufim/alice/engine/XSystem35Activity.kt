@@ -63,9 +63,9 @@ class XSystem35Activity : EngineActivity() {
 
     // System 3.x: встроенное меню движка (громкость BGM/SE, пропуск сообщений,
     // рестарт, выход) в оригинале открывается «тремя пальцами» — добавляем кнопку.
-    override fun onPanelSetup(panel: EdgePanel) {
-        panel.addButton("Меню движка (звук, пропуск)") { NativeBridge.openEngineMenu() }
-    }
+    override fun extraPanelActions(): List<PanelAction> = listOf(
+        PanelAction("Меню движка (звук, пропуск)") { NativeBridge.openEngineMenu() }
+    )
 
     override fun getArguments(): Array<String> {
         return arrayOf(
