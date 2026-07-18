@@ -75,9 +75,14 @@ API поверх `variable.c`: имена переменных `v_name()` (из 
 
 ## Сборка
 
-Один Gradle-модуль, один верхнеуровневый `CMakeLists.txt` с `add_subdirectory` для обоих движков → две `.so`. Исходники движков подключаются как git-сабмодули/поддеревья.
+Реализовано (уточнение против первоначального плана — оказалось проще и надёжнее): каждый движок собирается своей нативной системой, а `.so` кладутся в общий `jniLibs`, откуда Gradle пакует APK:
 
-**Риск SDL2.** Обоим движкам нужен `libSDL2.so`. Если версии SDL2 разойдутся — конфликт по имени файла в `jniLibs`. На этапе реализации сверить версии SDL2 обоих движков и выровнять на общую (обе — порты kichikuou на SDL2, вероятно совместимы).
+- `build-shared-libs.sh` (верхний CMake ExternalProject) собирает xsystem4 → `libxsystem4.so`, `libcglm.so`.
+- `build-xsystem35.sh` собирает xsystem35 его собственным android-CMake (FetchContent SDL 2.32.10 + ttf + mixer + webp) → `libxsystem35.so` + `libSDL2.so`/`libSDL2_ttf.so`/`libSDL2_mixer.so`, копирует в тот же `jniLibs`. Вызывается в конце `build-shared-libs.sh`.
+
+**SDL2 (решено).** xsystem4 использует SDL 2.30.9, xsystem35 — 2.32.10. Единым в APK берётся `libSDL2.so` 2.32.10 (последний SDL2, ABI-совместим назад с 2.30.9), поэтому оба движка работают против одного файла. Порядок в скрипте: сначала xsystem4 (ставит свой SDL), затем xsystem35 перезаписывает `libSDL2.so` на 2.32.10.
+
+Единый пакет/JNI: код в `io.github.rufim.alice`; оба движка экспортируют `Java_io_github_rufim_alice_NativeBridge_*`.
 
 ## Явные допущения
 
