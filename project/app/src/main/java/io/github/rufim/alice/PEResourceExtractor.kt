@@ -1,4 +1,4 @@
-package io.github.kichikuou.xsystem4
+package io.github.rufim.alice
 
 import java.io.ByteArrayOutputStream
 import java.io.File

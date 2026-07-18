@@ -1,4 +1,4 @@
-package io.github.kichikuou.xsystem4
+package io.github.rufim.alice
 
 import android.content.Context
 import android.os.Handler
@@ -70,13 +70,20 @@ class TtsSpeaker(private val appContext: Context) {
     var advance: () -> Unit = {}
     private var advanceGeneration = 0
     private var emitSeq = 0
-    private companion object { const val MAX_ADVANCE_TAPS = 6 }
-    @Volatile var paused = false
+    private companion object {
+        const val MAX_ADVANCE_TAPS = 6
+        // за 700 мс модалка перерисовывает десятки глифов (в тесте ~80); обычный
+        // «пустой» тап — 0. Порог 20 отделяет модалку от мелких перерисовок UI.
+        const val UI_MODAL_DRAW_THRESHOLD = 20
+    }
+    @Volatile var stopped = false
         private set
+    /** Уведомить UI, что чтение остановлено (напр. игровым «ПРОПУСК») — обновить кнопку. */
+    var onStoppedChanged: (() -> Unit)? = null
     private var utterance = 0
     private var lastSpeaker: String? = null
     private var pendingSpeaker: String? = null
-    private var lastLineText: String? = null   // для возобновления после паузы
+    private var lastLineText: String? = null   // фраза для «плей» после стопа
     private var activeUtterances = 0
     private var flushOnNextLine = false
 
@@ -170,7 +177,7 @@ class TtsSpeaker(private val appContext: Context) {
 
     fun setEnabled(on: Boolean) {
         enabled = on
-        paused = false
+        stopped = false
         if (!on) {
             tts?.stop()
             main.post {
@@ -180,20 +187,23 @@ class TtsSpeaker(private val appContext: Context) {
         }
     }
 
-    /** Пауза: остановить речь, замереть (не читать/не листать). */
-    fun pause() {
-        paused = true
+    /** Стоп: полностью очистить очередь, остановить движок, замереть. */
+    fun stop() {
+        val was = stopped
+        stopped = true
         advanceGeneration++
         tts?.stop()
         main.post {
             activeUtterances = 0
             NativeBridge.duck(false, duckPercent)
         }
+        if (!was) main.post { onStoppedChanged?.invoke() }
     }
 
-    /** Возобновить: перечитать текущий бокс и продолжить. */
-    fun resume() {
-        paused = false
+    /** Плей: читать с последней сохранённой фразы. */
+    fun play() {
+        stopped = false
+        main.post { onStoppedChanged?.invoke() }
         val t = lastLineText ?: return
         main.post {
             flushOnNextLine = true
@@ -203,9 +213,9 @@ class TtsSpeaker(private val appContext: Context) {
 
     /** Вызывается из потока VM (через NativeBridge). */
     fun speak(text: String) {
-        if (!enabled || !ready || paused) return
         TtsSegmenter.speakerOf(text)?.let { pendingSpeaker = it; return }
-        lastLineText = text
+        lastLineText = text   // помним текущий бокс даже в стопе (для «плей»)
+        if (!enabled || !ready || stopped) return
         main.post {
             emitSeq++   // пришёл новый текст от движка (для «прокачки» листания)
             pendingSpeaker?.let { name ->
@@ -245,14 +255,21 @@ class TtsSpeaker(private val appContext: Context) {
         if (activeUtterances > 0) return          // пошла новая речь — она продолжит
         if (taps >= MAX_ADVANCE_TAPS) return
         val before = emitSeq
+        val uiBefore = NativeBridge.uiDrawCount()
         advance()                                  // один тап
         main.postDelayed({
             if (gen != advanceGeneration || !enabled || !autoAdvance) return@postDelayed
-            if (emitSeq == before && activeUtterances == 0) {
-                // новый текст не появился → это был внутренний бокс той же реплики
-                pumpAdvance(gen, taps + 1)
+            if (emitSeq != before || activeUtterances > 0) {
+                // появилась новая реплика — её озвучка продолжит цепочку
+                return@postDelayed
             }
-            // иначе появилась новая реплика — её onStart уже сбросил поколение
+            // новой реплики нет. Если на экране активно рисуется текст (модалка-
+            // уведомление вроде «Была схвачена …») — НЕ листаем её тапом, замираем:
+            // пользователь прочтёт и закроет сам, дальше пойдёт обычный диалог.
+            if (NativeBridge.uiDrawCount() - uiBefore > UI_MODAL_DRAW_THRESHOLD)
+                return@postDelayed
+            // иначе это был внутренний бокс той же реплики — листаем дальше
+            pumpAdvance(gen, taps + 1)
         }, 700)
     }
 

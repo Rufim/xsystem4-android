@@ -1,4 +1,4 @@
-package io.github.kichikuou.xsystem4
+package io.github.rufim.alice
 
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage

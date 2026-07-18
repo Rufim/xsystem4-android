@@ -1,4 +1,4 @@
-package io.github.kichikuou.xsystem4
+package io.github.rufim.alice
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -176,10 +176,14 @@ class LauncherActivity : Activity(), GameListObserver {
                 .show()
             return
         }
+        val cls = when (item.engine) {
+            Engine.XSYSTEM4 -> XSystem4Activity::class.java
+            Engine.XSYSTEM35 -> XSystem35Activity::class.java
+        }
         val i = Intent()
-        i.setClass(applicationContext, XSystem4Activity::class.java)
-        i.putExtra(XSystem4Activity.EXTRA_GAME_ROOT, item.path.path)
-        i.putExtra(XSystem4Activity.EXTRA_SAVE_DIR, item.savedir!!.path)
+        i.setClass(applicationContext, cls)
+        i.putExtra(EngineActivity.EXTRA_GAME_ROOT, item.path.path)
+        i.putExtra(EngineActivity.EXTRA_SAVE_DIR, item.savedir!!.path)
         startActivity(i)
     }
 

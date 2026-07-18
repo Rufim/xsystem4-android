@@ -24,7 +24,7 @@
             <p>3. 「USB の接続用途」から「ファイル転送」を選択します。</p>
             <p>4. PC 側で、ファイル転送のウィンドウが開きます。</p>
             <p>5. ゲームフォルダ（例: &quot;戦国ランス&quot;）を
-                  <tt>Android/data/io.github.kichikuou.xsystem4/files/</tt> にコピーします。</p>
+                  <tt>Android/data/io.github.rufim.alice/files/</tt> にコピーします。</p>
             <p>6. 転送を終えたら、PC とデバイスの接続を解除します。</p>
             <p>7. この画面の右上のメニューボタンをタップして「更新」を選択します。</p>
         ]]>

@@ -1,9 +1,7 @@
-package io.github.kichikuou.xsystem4
+package io.github.rufim.alice
 
 import android.os.Bundle
-import android.system.Os
 import android.view.View
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
@@ -13,17 +11,27 @@ import android.widget.TextView
 import android.widget.Toast
 import org.libsdl.app.SDLActivity
 
-// Intent for this activity must have the following extras:
-// - EXTRA_GAME_ROOT (string): A path to the game installation.
-// - EXTRA_SAVE_DIR (string): A path to a directory where save files are stored.
-class XSystem4Activity : SDLActivity() {
+/**
+ * Общий базовый класс игровых активити обоих движков. Несёт всю движко-
+ * независимую обвязку: боковую панель, TTS-озвучку, читы, ML Kit-перевод имён,
+ * плавающую кнопку стоп/плей, диалоги. Подклассы задают только нативную
+ * библиотеку (`getLibraries`) и аргументы запуска (`getArguments`).
+ *
+ * Intent обязан содержать extras:
+ * - EXTRA_GAME_ROOT (string): путь к каталогу установленной игры.
+ * - EXTRA_SAVE_DIR  (string): путь к каталогу сейвов.
+ */
+abstract class EngineActivity : SDLActivity() {
     companion object {
         const val EXTRA_GAME_ROOT = "GAME_ROOT"
         const val EXTRA_SAVE_DIR = "SAVE_DIR"
-        const val COMMAND_OPEN_PLAYING_MANUAL = 0x8000  // xsystem4/src/hll/SystemService.c
     }
 
-    private lateinit var tts: TtsSpeaker
+    protected lateinit var tts: TtsSpeaker
+    private lateinit var panel: EdgePanel
+    private lateinit var playPause: android.widget.ImageButton
+    private var nameTranslator: NameTranslator? = null
+    private var cheatPanel: CheatPanel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,7 +47,10 @@ class XSystem4Activity : SDLActivity() {
         val panel = EdgePanel(this, overlay)
 
         tts = TtsSpeaker(this)
-        NativeBridge.init({ text, _ -> tts.speak(text) }, { tts.pageBreak() })
+        NativeBridge.init(
+            { text, _ -> tts.speak(text) },
+            { tts.pageBreak() },
+            { state -> if (state != 0) tts.stop() })   // игровой «ПРОПУСК» → стоп чтения
 
         val ttsOn = panel.prefs.getBoolean("tts", false)
         val duckOn = panel.prefs.getBoolean("duck", true)
@@ -59,36 +70,37 @@ class XSystem4Activity : SDLActivity() {
         panel.addButton("Озвучка (TTS)") { showTtsDialog() }
         panel.addButton("Читы") { showCheatsDialog() }
 
-        // Плавающая кнопка play/pause (видна только при включённом TTS)
-        playPause = Button(this).apply {
-            text = "⏸"
-            textSize = 22f
-            setTextColor(android.graphics.Color.WHITE)
+        // Плавающая кнопка стоп/плей (видна только при включённом TTS)
+        playPause = android.widget.ImageButton(this).apply {
+            setImageResource(R.drawable.ic_tts_stop)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             setBackgroundColor(android.graphics.Color.argb(170, 30, 34, 48))
             setOnClickListener {
-                if (tts.paused) { tts.resume(); text = "⏸" }
-                else { tts.pause(); text = "▶" }
+                if (tts.stopped) tts.play() else tts.stop()
             }
         }
         overlay.addView(playPause, FrameLayout.LayoutParams(dpToPx(52), dpToPx(52),
             android.view.Gravity.START or android.view.Gravity.BOTTOM).apply {
             leftMargin = dpToPx(12); bottomMargin = dpToPx(12)
         })
+        // держать значок в актуальном состоянии (в т.ч. при стопе из игрового «ПРОПУСК»)
+        tts.onStoppedChanged = { updatePlayPauseIcon() }
         updatePlayPauseVisibility(ttsOn)
 
         NativeBridge.setTts(ttsOn)
         tts.setEnabled(ttsOn)
     }
 
-    private lateinit var panel: EdgePanel
-    private lateinit var playPause: Button
-    private var nameTranslator: NameTranslator? = null
-
     private fun updatePlayPauseVisibility(ttsOn: Boolean) {
         if (::playPause.isInitialized) {
             playPause.visibility = if (ttsOn) android.view.View.VISIBLE else android.view.View.GONE
-            if (ttsOn) playPause.text = if (tts.paused) "▶" else "⏸"
+            if (ttsOn) updatePlayPauseIcon()
         }
+    }
+
+    private fun updatePlayPauseIcon() {
+        if (::playPause.isInitialized)
+            playPause.setImageResource(if (tts.stopped) R.drawable.ic_tts_play else R.drawable.ic_tts_stop)
     }
 
     private fun showTtsDialog() {
@@ -188,35 +200,38 @@ class XSystem4Activity : SDLActivity() {
     }
 
     private fun showCheatsDialog() {
-        val cheats = CheatPanel(this, panel.prefs)
-
-        // Переключатель перевода имён (ML Kit) — в блоке ввода читов
-        cheats.prependControl(makeSwitch("Переводить имена (ML Kit)",
-                panel.prefs.getBoolean("translate_names", false)) { on ->
-            if (on) {
-                if (nameTranslator == null) nameTranslator = NameTranslator()
-                nameTranslator!!.ensureModel { ready ->
-                    if (ready) {
-                        panel.prefs.edit().putBoolean("translate_names", true).apply()
-                        cheats.translateNames = { rows, done ->
-                            rows.forEach { r ->
-                                nameTranslator!!.translate(r.name) { r.display = it; done() }
+        // Один постоянный экземпляр: сохраняет введённое значение, список и
+        // состояние скана между открытиями (нужно для «изменить в игре → Сузить»).
+        val cheats = cheatPanel ?: CheatPanel(this, panel.prefs).also { cp ->
+            cp.prependControl(makeSwitch("Переводить имена (ML Kit)",
+                    panel.prefs.getBoolean("translate_names", false)) { on ->
+                if (on) {
+                    if (nameTranslator == null) nameTranslator = NameTranslator()
+                    nameTranslator!!.ensureModel { ready ->
+                        if (ready) {
+                            panel.prefs.edit().putBoolean("translate_names", true).apply()
+                            cp.translateNames = { rows, done ->
+                                rows.forEach { r ->
+                                    nameTranslator!!.translate(r.name) { r.display = it; done() }
+                                }
                             }
+                            cp.reload()
+                        } else {
+                            Toast.makeText(this, "Модель перевода недоступна (нет сети/сервисов Google)",
+                                Toast.LENGTH_LONG).show()
                         }
-                        cheats.reload()
-                    } else {
-                        Toast.makeText(this, "Модель перевода недоступна (нет сети/сервисов Google)",
-                            Toast.LENGTH_LONG).show()
                     }
+                } else {
+                    panel.prefs.edit().putBoolean("translate_names", false).apply()
+                    cp.translateNames = null
+                    cp.reload()
                 }
-            } else {
-                panel.prefs.edit().putBoolean("translate_names", false).apply()
-                cheats.translateNames = null
-                cheats.reload()
-            }
-        })
-
-        cheats.reload()
+            })
+            cp.reload()
+            cheatPanel = cp
+        }
+        // отвязать view от прошлого (закрытого) диалога перед повторным показом
+        (cheats.view.parent as? android.view.ViewGroup)?.removeView(cheats.view)
         showFullscreenDialog("Читы", cheats.view)
     }
 
@@ -263,14 +278,14 @@ class XSystem4Activity : SDLActivity() {
         wrap.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            addView(android.widget.ImageButton(this@XSystem4Activity).apply {
+            addView(android.widget.ImageButton(this@EngineActivity).apply {
                 setImageResource(R.drawable.ic_arrow_back)
                 background = null
                 setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
                 contentDescription = "Назад"
                 setOnClickListener { dlg.dismiss() }
             }, LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)))
-            addView(TextView(this@XSystem4Activity).apply {
+            addView(TextView(this@EngineActivity).apply {
                 text = title; textSize = 20f
                 setTextColor(android.graphics.Color.WHITE)
                 setPadding(dpToPx(12), 0, 0, 0)
@@ -321,7 +336,7 @@ class XSystem4Activity : SDLActivity() {
         }
     }
 
-    private fun dpToPx(dp: Int) = (dp * resources.displayMetrics.density).toInt()
+    protected fun dpToPx(dp: Int) = (dp * resources.displayMetrics.density).toInt()
 
     /** Синтетический тап в центр игровой поверхности — «дальше» в диалоге
      *  (тот же путь, что палец; SDL-клавиши игру на Android не листают). */
@@ -344,33 +359,5 @@ class XSystem4Activity : SDLActivity() {
         if (::tts.isInitialized) tts.shutdown()
         nameTranslator?.close()
         super.onDestroy()
-    }
-
-    override fun getLibraries(): Array<String> {
-        return arrayOf("SDL2", "xsystem4")
-    }
-
-    override fun getArguments(): Array<String> {
-        val saveFolder = intent.getStringExtra(EXTRA_SAVE_DIR)!!
-        val gameRoot = intent.getStringExtra(EXTRA_GAME_ROOT)!!
-        return arrayOf("--save-folder", saveFolder, "--save-format=rsm", gameRoot)
-    }
-
-    override fun onUnhandledMessage(command: Int, param: Any): Boolean {
-        when (command) {
-            COMMAND_OPEN_PLAYING_MANUAL -> {
-                val gameRoot = intent.getStringExtra(EXTRA_GAME_ROOT)!!
-                val manualDir = java.io.File(gameRoot, "Manual")
-                if (manualDir.isDirectory) {
-                    val intent = android.content.Intent(this, ManualActivity::class.java).apply {
-                        val url = "file://${manualDir.absolutePath}/index.html"
-                        putExtra(ManualActivity.EXTRA_URL, url)
-                    }
-                    startActivity(intent)
-                }
-                return true
-            }
-        }
-        return super.onUnhandledMessage(command, param)
     }
 }

@@ -1,4 +1,4 @@
-package io.github.kichikuou.xsystem4
+package io.github.rufim.alice
 
 import android.annotation.TargetApi
 import android.app.Activity
@@ -27,17 +27,30 @@ interface GameListObserver {
     fun onInstallFailure(msgId: Int)
 }
 
-data class Item(val name: String, val path: File, val homedir: File, val savedir: File?, val icon: File?, val error: String?) {
+data class Item(val name: String, val path: File, val homedir: File, val savedir: File?, val icon: File?, val error: String?, val engine: Engine = Engine.XSYSTEM4) {
     companion object {
         fun fromDirectory(dir: File, homedir: File, context: Context): Item {
+            return when (detectEngine(dir)) {
+                Engine.XSYSTEM35 -> fromSystem35(dir, homedir)
+                Engine.XSYSTEM4 -> fromSystem4(dir, homedir, context)
+                null -> {
+                    val err = context.getString(R.string.toast_no_ini, dir.path)
+                    Log.w("GameList", err)
+                    Item(dir.name, dir, homedir, null, null, err)
+                }
+            }
+        }
+
+        // System 3.x: имя — из папки, сейвы (.asd) пишутся в каталог игры.
+        private fun fromSystem35(dir: File, homedir: File): Item {
+            val icon = findIcon(dir)
+            return Item(dir.name, dir, homedir, dir, icon, null, Engine.XSYSTEM35)
+        }
+
+        private fun fromSystem4(dir: File, homedir: File, context: Context): Item {
             var iniFile = File(dir, "System40.ini")
             if (!iniFile.exists())
                 iniFile = File(dir, "AliceStart.ini")
-            if (!iniFile.exists()) {
-                val err = context.getString(R.string.toast_no_ini, dir.path)
-                Log.w("GameList", err)
-                return Item(dir.name, dir, homedir, null, null, err)
-            }
             val icon = findIcon(dir)
             val ini = System40Ini.parse(iniFile)
             if (ini.gameName == null) {
@@ -46,7 +59,7 @@ data class Item(val name: String, val path: File, val homedir: File, val savedir
                 return Item(dir.name, dir, homedir, null, icon, err)
             }
             val savedir = File(dir, ini.SaveFolder ?: "SaveData")
-            return Item(ini.gameName, dir, homedir, savedir, icon, null)
+            return Item(ini.gameName, dir, homedir, savedir, icon, null, Engine.XSYSTEM4)
         }
 
         private fun findIcon(dir: File): File? {

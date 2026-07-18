@@ -1,4 +1,4 @@
-package io.github.kichikuou.xsystem4
+package io.github.rufim.alice
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
