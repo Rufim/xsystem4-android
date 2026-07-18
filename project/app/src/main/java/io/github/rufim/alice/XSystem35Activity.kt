@@ -50,6 +50,9 @@ class XSystem35Activity : EngineActivity() {
     // Текущая страница видна в оверлее «стр N · окно M» при включённом TTS.
     override fun defaultSuppressPages(): String = "11,19"
 
+    // Фильтры текста (оверлей + поля страниц/окон) — специфика System 3.x.
+    override val supportsTextFilters: Boolean get() = true
+
     // System 3.x: встроенное меню движка (громкость BGM/SE, пропуск сообщений,
     // рестарт, выход) в оригинале открывается «тремя пальцами» — добавляем кнопку.
     override fun onPanelSetup(panel: EdgePanel) {

@@ -66,8 +66,10 @@ abstract class EngineActivity : SDLActivity() {
         tts.setPitch(panel.prefs.getInt("tts_pitch", 100) / 100f)
         tts.autoAdvance = panel.prefs.getBoolean("auto_advance", false)
         tts.advance = { advanceGame() }
-        applySuppressPages(panel.prefs.getString("tts_suppress_pages", defaultSuppressPages())!!)
-        applyReadWindows(panel.prefs.getString("tts_read_windows", defaultReadWindows())!!)
+        if (supportsTextFilters) {
+            applySuppressPages(panel.prefs.getString("tts_suppress_pages", defaultSuppressPages())!!)
+            applyReadWindows(panel.prefs.getString("tts_read_windows", defaultReadWindows())!!)
+        }
 
         this.panel = panel
         panel.addButton("Озвучка (TTS)") { showTtsDialog() }
@@ -90,22 +92,25 @@ abstract class EngineActivity : SDLActivity() {
         // держать значок в актуальном состоянии (в т.ч. при стопе из игрового «ПРОПУСК»)
         tts.onStoppedChanged = { updatePlayPauseIcon() }
 
-        // Отладочный оверлей: страница сценария и окно отображаемого текста
-        // (верхний правый угол). Помогает подобрать «Не читать страницы».
-        winIndicator = TextView(this).apply {
-            setTextColor(android.graphics.Color.YELLOW)
-            setBackgroundColor(android.graphics.Color.argb(160, 0, 0, 0))
-            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
-            textSize = 13f
-            text = "стр — · окно —"
-        }
-        overlay.addView(winIndicator, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-            android.view.Gravity.END or android.view.Gravity.TOP).apply {
-            topMargin = dpToPx(6); rightMargin = dpToPx(6)
-        })
-        NativeBridge.setWindowListener { w, p ->
-            runOnUiThread { winIndicator.text = "стр $p · окно $w" }
+        // Отладочный оверлей «стр N · окно M» (верхний правый угол) — только для
+        // движков с фильтрами текста (System 3.x): помогает подобрать
+        // «Не читать страницы».
+        if (supportsTextFilters) {
+            winIndicator = TextView(this).apply {
+                setTextColor(android.graphics.Color.YELLOW)
+                setBackgroundColor(android.graphics.Color.argb(160, 0, 0, 0))
+                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+                textSize = 13f
+                text = "стр — · окно —"
+            }
+            overlay.addView(winIndicator, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.END or android.view.Gravity.TOP).apply {
+                topMargin = dpToPx(6); rightMargin = dpToPx(6)
+            })
+            NativeBridge.setWindowListener { w, p ->
+                runOnUiThread { winIndicator.text = "стр $p · окно $w" }
+            }
         }
 
         updatePlayPauseVisibility(ttsOn)
@@ -156,41 +161,42 @@ abstract class EngineActivity : SDLActivity() {
             textSize = 12f
             setTextColor(android.graphics.Color.rgb(150, 160, 180))
         })
-        // Читать только эти окна сообщений (окно диалога). Пусто — читать все.
-        // Исключает боевой лог/статус/меню, которые идут в другие окна.
-        col.addView(dialogLabel("Читать только окна (номера, пусто = все)"))
-        col.addView(android.widget.EditText(this).apply {
-            setText(prefs.getString("tts_read_windows", defaultReadWindows()))
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            hint = "напр. 5"
-            setTextColor(android.graphics.Color.BLACK)   // фон поля светлый
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    val v = s?.toString()?.trim() ?: ""
-                    prefs.edit().putString("tts_read_windows", v).apply()
-                    applyReadWindows(v)
-                }
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        if (supportsTextFilters) {
+            // Читать только эти окна сообщений. Пусто — читать все.
+            col.addView(dialogLabel("Читать только окна (номера, пусто = все)"))
+            col.addView(android.widget.EditText(this).apply {
+                setText(prefs.getString("tts_read_windows", defaultReadWindows()))
+                inputType = android.text.InputType.TYPE_CLASS_TEXT
+                hint = "напр. 5"
+                setTextColor(android.graphics.Color.BLACK)   // фон поля светлый
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun afterTextChanged(s: android.text.Editable?) {
+                        val v = s?.toString()?.trim() ?: ""
+                        prefs.edit().putString("tts_read_windows", v).apply()
+                        applyReadWindows(v)
+                    }
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                })
             })
-        })
-        // Не читать текст на указанных страницах (меню/статус). Пусто — читать всё.
-        col.addView(dialogLabel("Не читать страницы (номера через запятую)"))
-        col.addView(android.widget.EditText(this).apply {
-            setText(prefs.getString("tts_suppress_pages", defaultSuppressPages()))
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            hint = "напр. 11"
-            setTextColor(android.graphics.Color.BLACK)   // фон поля светлый
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    val v = s?.toString()?.trim() ?: ""
-                    prefs.edit().putString("tts_suppress_pages", v).apply()
-                    applySuppressPages(v)
-                }
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            // Не читать текст на указанных страницах (меню/бой). Пусто — читать всё.
+            col.addView(dialogLabel("Не читать страницы (номера через запятую)"))
+            col.addView(android.widget.EditText(this).apply {
+                setText(prefs.getString("tts_suppress_pages", defaultSuppressPages()))
+                inputType = android.text.InputType.TYPE_CLASS_TEXT
+                hint = "напр. 11,19"
+                setTextColor(android.graphics.Color.BLACK)   // фон поля светлый
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun afterTextChanged(s: android.text.Editable?) {
+                        val v = s?.toString()?.trim() ?: ""
+                        prefs.edit().putString("tts_suppress_pages", v).apply()
+                        applySuppressPages(v)
+                    }
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                })
             })
-        })
+        }
         // Музыка при чтении: 0..100 %
         addSlider(col, "Музыка при чтении", prefs.getInt("duck_pct", 15), 0..100,
             { "$it%" }) { v ->
@@ -457,6 +463,10 @@ abstract class EngineActivity : SDLActivity() {
 
     /** Добавить движко-специфичные кнопки в боковую панель (по умолчанию — ничего). */
     protected open fun onPanelSetup(panel: EdgePanel) {}
+
+    /** Есть ли у движка фильтры текста по страницам/окнам (оверлей + поля в TTS).
+     *  Только System 3.x; для System 4 отбор текста делает сам движок (ADV-хук). */
+    protected open val supportsTextFilters: Boolean get() = false
 
     /** Синтетический тап в центр игровой поверхности — «дальше» в диалоге
      *  (тот же путь, что палец; SDL-клавиши/SDL_PushEvent игру на Android не листают).
