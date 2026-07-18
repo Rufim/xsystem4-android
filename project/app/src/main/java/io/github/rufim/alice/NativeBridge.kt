@@ -1,6 +1,9 @@
 package io.github.rufim.alice
 
-/** JNI-мост к android_bridge.c внутри libxsystem4.so. */
+
+/** JNI-мост к android_bridge.c обоих движков (libxsystem4/libxsystem35).
+ *  Остаётся в корневом пакете: нативные символы Java_io_github_rufim_alice_NativeBridge_*
+ *  зашиты в .so — перемещение сломало бы JNI. */
 object NativeBridge {
     private var listener: ((String, Boolean) -> Unit)? = null
     private var pageListener: (() -> Unit)? = null

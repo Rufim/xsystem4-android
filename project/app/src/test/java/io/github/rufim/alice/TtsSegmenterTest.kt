@@ -1,5 +1,8 @@
 package io.github.rufim.alice
 
+import io.github.rufim.alice.tts.*
+import io.github.rufim.alice.launcher.*
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

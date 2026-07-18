@@ -1,4 +1,12 @@
-package io.github.rufim.alice
+package io.github.rufim.alice.tts
+
+import io.github.rufim.alice.R
+import io.github.rufim.alice.NativeBridge
+import io.github.rufim.alice.tts.*
+import io.github.rufim.alice.cheats.*
+import io.github.rufim.alice.launcher.*
+import io.github.rufim.alice.engine.*
+import io.github.rufim.alice.ui.*
 
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage
