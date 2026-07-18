@@ -65,7 +65,7 @@ abstract class EngineActivity : SDLActivity() {
         tts.setRate(panel.prefs.getInt("tts_rate", 100) / 100f)
         tts.setPitch(panel.prefs.getInt("tts_pitch", 100) / 100f)
         tts.autoAdvance = panel.prefs.getBoolean("auto_advance", false)
-        tts.advance = { synthesizeTap() }
+        tts.advance = { advanceGame() }
 
         this.panel = panel
         panel.addButton("Озвучка (TTS)") { showTtsDialog() }
@@ -376,6 +376,10 @@ abstract class EngineActivity : SDLActivity() {
     }
 
     protected fun dpToPx(dp: Int) = (dp * resources.displayMetrics.density).toInt()
+
+    /** Как «листать» диалог при авто-режиме. По умолчанию — синтетический тап
+     *  (для xsystem4; SDL-клавиши там не листают). Подклассы могут переопределить. */
+    protected open fun advanceGame() = synthesizeTap()
 
     /** Синтетический тап в центр игровой поверхности — «дальше» в диалоге
      *  (тот же путь, что палец; SDL-клавиши игру на Android не листают). */

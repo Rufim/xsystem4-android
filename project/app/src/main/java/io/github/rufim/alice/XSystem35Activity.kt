@@ -30,6 +30,12 @@ class XSystem35Activity : EngineActivity() {
         return arrayOf("SDL2", "xsystem35")
     }
 
+    // System 3.x надёжно листается клавишей RETURN (в отличие от xsystem4),
+    // поэтому шлём нативный RETURN через мост, а не синтетический тап.
+    override fun advanceGame() {
+        NativeBridge.advance()
+    }
+
     override fun getArguments(): Array<String> {
         return arrayOf(
             "-gamedir", intent.getStringExtra(EXTRA_GAME_ROOT)!!,
