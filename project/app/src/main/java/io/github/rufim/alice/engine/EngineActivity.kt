@@ -11,6 +11,7 @@ import io.github.rufim.alice.history.HistoryScreen
 import io.github.rufim.alice.history.MessageHistory
 import io.github.rufim.alice.tts.NameTranslator
 import io.github.rufim.alice.tts.TTS_LANGS
+import io.github.rufim.alice.tts.TtsProfile
 import io.github.rufim.alice.tts.TtsSpeaker
 import io.github.rufim.alice.ui.ComposeOverlay
 import org.libsdl.app.SDLActivity
@@ -48,6 +49,7 @@ abstract class EngineActivity : SDLActivity() {
     /** Поток текста и восстановление сохранённых настроек озвучки. */
     private fun setupBridge() {
         tts = TtsSpeaker(this)
+        tts.profile = ttsProfile
         AdvRouter.onLine = { speaker, text ->
             MessageHistory.add(speaker, text)
             tts.speak(speaker, text)
@@ -180,6 +182,9 @@ abstract class EngineActivity : SDLActivity() {
     /** Есть ли у движка фильтры текста по страницам/окнам (поля в настройках,
      *  индикатор «стр·окно»). Только System 3.x. */
     protected open val supportsTextFilters: Boolean get() = false
+
+    /** Профиль озвучки (механика завершения чтения и прокачки листания). */
+    protected open val ttsProfile: TtsProfile get() = TtsProfile.SYSTEM4
 
     /** Синтетический тап в центр игровой поверхности — «дальше» в диалоге
      *  (тот же путь, что палец; SDL-клавиши/SDL_PushEvent игру на Android не листают).

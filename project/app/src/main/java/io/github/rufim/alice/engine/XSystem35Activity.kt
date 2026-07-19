@@ -61,6 +61,10 @@ class XSystem35Activity : EngineActivity() {
     // Фильтры текста (оверлей + поля страниц/окон) — специфика System 3.x.
     override val supportsTextFilters: Boolean get() = true
 
+    // Механика чтения System 3.x: конец чтения по isSpeaking (onDone теряется),
+    // без модалко-защиты (uiDrawCount тут всегда 0).
+    override val ttsProfile: TtsProfile get() = TtsProfile.SYSTEM35
+
     // System 3.x: встроенное меню движка (громкость BGM/SE, пропуск сообщений,
     // рестарт, выход) в оригинале открывается «тремя пальцами» — добавляем кнопку.
     override fun extraPanelActions(): List<PanelAction> = listOf(

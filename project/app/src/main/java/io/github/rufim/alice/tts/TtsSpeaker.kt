@@ -78,10 +78,40 @@ object TtsSegmenter {
 }
 
 /**
+ * Профиль поведения озвучки — у движков разная механика диалогов:
+ *
+ * System 4: реплика приходит целиком до отображения; длинная реплика листается
+ * по внутренним боксам «пустыми» тапами (глифы не перерисовываются), а модальные
+ * уведомления рисуют текст посимвольно (NewFont) — прокачку тапов останавливает
+ * рост uiDrawCount. Завершение чтения — по счётчику реплик (onStart/onDone
+ * приходят парно).
+ *
+ * System 3.x: бокс приходит построчно и флашится одной репликой; счётчик
+ * реплик ненадёжен (движок TTS теряет onDone промежуточной реплики) — конец
+ * чтения определяется по isSpeaking с дебаунсом; модалко-защиты нет
+ * (uiDrawCount всегда 0).
+ */
+data class TtsProfile(
+    /** Конец чтения по isSpeaking-дебаунсу (S3.x) вместо счётчика реплик (S4). */
+    val settleByIsSpeaking: Boolean,
+    /** Останавливать прокачку тапов при росте uiDrawCount (модалка; только S4). */
+    val modalGuard: Boolean,
+    /** Максимум тапов прокачки одной реплики. */
+    val maxAdvanceTaps: Int,
+) {
+    companion object {
+        val SYSTEM4 = TtsProfile(settleByIsSpeaking = false, modalGuard = true, maxAdvanceTaps = 6)
+        val SYSTEM35 = TtsProfile(settleByIsSpeaking = true, modalGuard = false, maxAdvanceTaps = 3)
+    }
+}
+
+/**
  * Очередь TTS: автоязык по сегментам, имя говорящего только при смене,
  * приглушение музыки на время речи (через NativeBridge.nativeDuckMusic).
  */
 class TtsSpeaker(private val appContext: Context) {
+    /** Движко-специфичное поведение (задаёт активити до включения озвучки). */
+    var profile: TtsProfile = TtsProfile.SYSTEM4
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var ready = false
     @Volatile private var enabled = false
@@ -94,7 +124,6 @@ class TtsSpeaker(private val appContext: Context) {
     private var advanceGeneration = 0
     private var emitSeq = 0
     private companion object {
-        const val MAX_ADVANCE_TAPS = 6
         // за 700 мс модалка перерисовывает десятки глифов (в тесте ~80); обычный
         // «пустой» тап — 0. Порог 20 отделяет модалку от мелких перерисовок UI.
         const val UI_MODAL_DRAW_THRESHOLD = 20
@@ -132,16 +161,24 @@ class TtsSpeaker(private val appContext: Context) {
         private fun finished(id: String?) {
             main.post {
                 if (activeUtterances > 0) activeUtterances--
-                // Не полагаемся на точную парность onStart/onDone: движок может НЕ
-                // прислать onDone промежуточной реплики (напр. имя говорящего перед
-                // текстом), тогда счётчик завис бы и листание встало. Решаем по
-                // фактическому состоянию TTS через небольшой дебаунс.
-                main.postDelayed({
-                    if (tts?.isSpeaking == true) return@postDelayed
-                    activeUtterances = 0
-                    NativeBridge.duck(false, duckPercent)
-                    scheduleAdvance()
-                }, 250)
+                if (profile.settleByIsSpeaking) {
+                    // S3.x: движок TTS теряет onDone промежуточной реплики — счётчик
+                    // ненадёжен, конец чтения определяем по isSpeaking с дебаунсом.
+                    main.postDelayed({
+                        if (tts?.isSpeaking == true) return@postDelayed
+                        activeUtterances = 0
+                        NativeBridge.duck(false, duckPercent)
+                        scheduleAdvance()
+                    }, 250)
+                } else {
+                    // S4: onStart/onDone парные — завершение по счётчику (без задержки,
+                    // прокачка внутренних боксов длинной реплики стартует сразу).
+                    if (activeUtterances <= 0) {
+                        activeUtterances = 0
+                        NativeBridge.duck(false, duckPercent)
+                        scheduleAdvance()
+                    }
+                }
             }
         }
     }
@@ -279,7 +316,7 @@ class TtsSpeaker(private val appContext: Context) {
     private fun pumpAdvance(gen: Int, taps: Int) {
         if (gen != advanceGeneration || !enabled || !autoAdvance) return
         if (activeUtterances > 0) return          // пошла новая речь — она продолжит
-        if (taps >= MAX_ADVANCE_TAPS) return
+        if (taps >= profile.maxAdvanceTaps) return
         val before = emitSeq
         val uiBefore = NativeBridge.uiDrawCount()
         advance()                                  // один тап
@@ -289,10 +326,11 @@ class TtsSpeaker(private val appContext: Context) {
                 // появилась новая реплика — её озвучка продолжит цепочку
                 return@postDelayed
             }
-            // новой реплики нет. Если на экране активно рисуется текст (модалка-
+            // Новой реплики нет. S4: если на экране активно рисуется текст (модалка-
             // уведомление вроде «Была схвачена …») — НЕ листаем её тапом, замираем:
             // пользователь прочтёт и закроет сам, дальше пойдёт обычный диалог.
-            if (NativeBridge.uiDrawCount() - uiBefore > UI_MODAL_DRAW_THRESHOLD)
+            if (profile.modalGuard &&
+                NativeBridge.uiDrawCount() - uiBefore > UI_MODAL_DRAW_THRESHOLD)
                 return@postDelayed
             // иначе это был внутренний бокс той же реплики — листаем дальше
             pumpAdvance(gen, taps + 1)
