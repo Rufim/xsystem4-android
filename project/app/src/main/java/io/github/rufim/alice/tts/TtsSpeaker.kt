@@ -98,10 +98,15 @@ data class TtsProfile(
     val modalGuard: Boolean,
     /** Максимум тапов прокачки одной реплики. */
     val maxAdvanceTaps: Int,
+    /** Склеивать построчный текст бокса в одну реплику (S4 отдаёт бокс построчно;
+     *  S3.x склеивает уже в нативном мосте). */
+    val coalesceLines: Boolean,
 ) {
     companion object {
-        val SYSTEM4 = TtsProfile(settleByIsSpeaking = false, modalGuard = true, maxAdvanceTaps = 6)
-        val SYSTEM35 = TtsProfile(settleByIsSpeaking = true, modalGuard = false, maxAdvanceTaps = 3)
+        val SYSTEM4 = TtsProfile(settleByIsSpeaking = false, modalGuard = true,
+            maxAdvanceTaps = 6, coalesceLines = true)
+        val SYSTEM35 = TtsProfile(settleByIsSpeaking = true, modalGuard = false,
+            maxAdvanceTaps = 3, coalesceLines = false)
     }
 }
 

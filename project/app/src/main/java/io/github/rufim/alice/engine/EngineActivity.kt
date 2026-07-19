@@ -50,6 +50,7 @@ abstract class EngineActivity : SDLActivity() {
     private fun setupBridge() {
         tts = TtsSpeaker(this)
         tts.profile = ttsProfile
+        AdvRouter.coalesceLines = ttsProfile.coalesceLines
         AdvRouter.onLine = { speaker, text ->
             MessageHistory.add(speaker, text)
             tts.speak(speaker, text)
