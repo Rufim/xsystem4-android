@@ -49,6 +49,7 @@ fun TtsSettingsScreen(
     var ttsOn by remember { mutableStateOf(prefs.getBoolean("tts", false)) }
     var duck by remember { mutableStateOf(prefs.getBoolean("duck", true)) }
     var autoAdvance by remember { mutableStateOf(prefs.getBoolean("auto_advance", false)) }
+    var skipNames by remember { mutableStateOf(prefs.getBoolean("tts_skip_names", false)) }
     var duckPct by remember { mutableIntStateOf(prefs.getInt("duck_pct", 15)) }
     var rate by remember { mutableIntStateOf(prefs.getInt("tts_rate", 100)) }
     var pitch by remember { mutableIntStateOf(prefs.getInt("tts_pitch", 100)) }
@@ -101,6 +102,11 @@ fun TtsSettingsScreen(
                 autoAdvance = on
                 prefs.edit().putBoolean("auto_advance", on).apply()
                 tts.autoAdvance = on
+            }
+            LabeledSwitch("Не читать имена говорящих", skipNames) { on ->
+                skipNames = on
+                prefs.edit().putBoolean("tts_skip_names", on).apply()
+                tts.readNames = !on
             }
             Text(
                 "Игровой режим АВТО лучше выключить — иначе он будет листать раньше голоса.",

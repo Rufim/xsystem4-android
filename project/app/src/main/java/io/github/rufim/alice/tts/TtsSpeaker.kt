@@ -124,6 +124,8 @@ class TtsSpeaker(private val appContext: Context) {
     @Volatile var duckPercent = 15
     /** Авто-листание: когда всё прочитано, послать игре «дальше». */
     @Volatile var autoAdvance = false
+    /** Озвучивать имя говорящего (маркер 【Имя】). Выкл — читать только реплику. */
+    @Volatile var readNames = true
     /** Как именно «листать» (задаёт активити: синтетический тап в SDL-поверхность). */
     var advance: () -> Unit = {}
     private var advanceGeneration = 0
@@ -140,6 +142,7 @@ class TtsSpeaker(private val appContext: Context) {
     private var utterance = 0
     private var lastSpeaker: String? = null
     private var lastLineText: String? = null   // фраза для «плей» после стопа
+    private var lastSpokenNorm = ""            // имя+текст реплики для echo-сравнения
     private var activeUtterances = 0
     private var flushOnNextLine = false
 
@@ -284,11 +287,12 @@ class TtsSpeaker(private val appContext: Context) {
      *  говорившим. Имя озвучивается только при смене говорившего. */
     fun speak(speaker: String?, text: String) {
         lastLineText = text   // помним текущий бокс даже в стопе (для «плей»)
+        lastSpokenNorm = normalizeForEcho((speaker ?: "") + text)
         if (!enabled || !ready || stopped) return
         main.post {
             emitSeq++   // пришёл новый текст от движка (для «прокачки» листания)
             if (speaker != null) {
-                if (speaker != lastSpeaker) enqueue(speaker)
+                if (readNames && speaker != lastSpeaker) enqueue(speaker)
                 lastSpeaker = speaker
             }
             // строку нечем озвучить (нет голоса/одни символы) — не стопорить авто-листание
@@ -324,6 +328,7 @@ class TtsSpeaker(private val appContext: Context) {
         if (taps >= profile.maxAdvanceTaps) return
         val before = emitSeq
         val uiBefore = NativeBridge.uiDrawCount()
+        if (profile.modalGuard) NativeBridge.takeDrawnText()   // сброс буфера отрисовки
         advance()                                  // один тап
         main.postDelayed({
             if (gen != advanceGeneration || !enabled || !autoAdvance) return@postDelayed
@@ -331,15 +336,39 @@ class TtsSpeaker(private val appContext: Context) {
                 // появилась новая реплика — её озвучка продолжит цепочку
                 return@postDelayed
             }
-            // Новой реплики нет. S4: если на экране активно рисуется текст (модалка-
-            // уведомление вроде «Была схвачена …») — НЕ листаем её тапом, замираем:
-            // пользователь прочтёт и закроет сам, дальше пойдёт обычный диалог.
+            // Новой реплики нет, но после тапа что-то нарисовалось. S4: сравниваем
+            // отрисованный текст с прочитанной репликой: второй бокс рисует ХВОСТ
+            // той же реплики (echo) — листаем дальше; модалка-уведомление
+            // («Была схвачена …») рисует чужой текст — замираем, пользователь
+            // прочтёт и закроет её сам.
             if (profile.modalGuard &&
-                NativeBridge.uiDrawCount() - uiBefore > UI_MODAL_DRAW_THRESHOLD)
-                return@postDelayed
-            // иначе это был внутренний бокс той же реплики — листаем дальше
+                NativeBridge.uiDrawCount() - uiBefore > UI_MODAL_DRAW_THRESHOLD) {
+                val drawn = normalizeForEcho(NativeBridge.takeDrawnText())
+                val grams = drawn.windowed(6, 3, partialWindows = false)
+                val echoPct = if (grams.isEmpty()) 100
+                              else grams.count { lastSpokenNorm.contains(it) } * 100 / grams.size
+                android.util.Log.i("xs4tts",
+                    "pump taps=$taps echo=$echoPct% drawn='${drawn.take(48)}'")
+                if (echoPct < 60)
+                    return@postDelayed   // чужой текст — модалка
+            }
+            // это был внутренний бокс той же реплики — листаем дальше
             pumpAdvance(gen, taps + 1)
         }, 700)
+    }
+
+    /** Нормализация для echo-сравнения: только буквы/цифры без регистра, подряд
+     *  идущие одинаковые символы схлопываются (движок рисует каждый глиф дважды —
+     *  текст + тень; применяется к обеим сторонам сравнения одинаково). */
+    private fun normalizeForEcho(s: String): String {
+        val sb = StringBuilder()
+        var prev = ' '
+        for (c in s.lowercase()) {
+            if (!c.isLetterOrDigit()) continue
+            if (c != prev) sb.append(c)
+            prev = c
+        }
+        return sb.toString()
     }
 
     /** @return сколько фраз реально встало в очередь TTS. */

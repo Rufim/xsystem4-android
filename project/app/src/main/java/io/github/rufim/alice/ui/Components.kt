@@ -71,7 +71,8 @@ fun LabeledSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(label, fontSize = 16.sp, color = AliceColors.TextPrimary)
+        Text(label, fontSize = 16.sp, color = AliceColors.TextPrimary,
+            modifier = Modifier.weight(1f).padding(end = 8.dp))
         Switch(
             checked = checked,
             onCheckedChange = onChange,

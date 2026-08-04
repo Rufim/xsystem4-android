@@ -38,11 +38,14 @@ import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.rufim.alice.R
+import io.github.rufim.alice.daiteikoku.AdmiralCheatScreen
+import io.github.rufim.alice.daiteikoku.AdmiralRoster
 import io.github.rufim.alice.engine.EngineActivity
 import io.github.rufim.alice.engine.XSystem35Activity
 import io.github.rufim.alice.engine.XSystem4Activity
 import io.github.rufim.alice.ui.AliceColors
 import io.github.rufim.alice.ui.AliceTheme
+import java.io.File
 
 /** Лаунчер: список установленных игр обоих движков, установка из ZIP, меню. */
 class LauncherActivity : ComponentActivity(), GameListObserver {
@@ -50,6 +53,12 @@ class LauncherActivity : ComponentActivity(), GameListObserver {
     private var items by mutableStateOf(listOf<Item>())
     private var installProgress by mutableStateOf<String?>(null)
     private var installError by mutableStateOf<Int?>(null)
+    private var admiralGameDir by mutableStateOf<File?>(null)   // savedir выбранной игры
+    private var admiralEditFile by mutableStateOf<File?>(null)  // выбранный слот
+
+    /** Игра — Daiteikoku (есть Daiteikoku.ain) → доступен редактор адмиралов. */
+    private fun canEditAdmirals(item: Item): Boolean =
+        item.engine == Engine.XSYSTEM4 && File(item.path, "Daiteikoku.ain").exists()
 
     private val pickZip = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@registerForActivityResult
@@ -70,21 +79,35 @@ class LauncherActivity : ComponentActivity(), GameListObserver {
         refresh()
         setContent {
             AliceTheme {
-                LauncherScreen(
-                    items = items,
-                    installProgress = installProgress,
-                    installError = installError,
-                    usageHtml = getString(R.string.usage),
-                    onRefresh = { refresh() },
-                    onInstallZip = { pickZip.launch("application/zip") },
-                    onLicenses = { startActivity(Intent(this, LicensesActivity::class.java)) },
-                    onErrorDismiss = { installError = null },
-                    onPlay = { launchGame(it) },
-                    onUninstall = { item ->
-                        gameList?.uninstall(item)
-                        items = gameList?.snapshot() ?: emptyList()
-                    },
-                )
+                val editFile = admiralEditFile
+                val gameDir = admiralGameDir
+                if (editFile != null) {
+                    AdmiralCheatScreen(saveFile = editFile, onClose = { admiralEditFile = null })
+                } else if (gameDir != null) {
+                    io.github.rufim.alice.daiteikoku.SaveSlotScreen(
+                        saveDir = gameDir,
+                        onPick = { admiralEditFile = it },
+                        onClose = { admiralGameDir = null },
+                    )
+                } else {
+                    LauncherScreen(
+                        items = items,
+                        installProgress = installProgress,
+                        installError = installError,
+                        usageHtml = getString(R.string.usage),
+                        onRefresh = { refresh() },
+                        onInstallZip = { pickZip.launch("application/zip") },
+                        onLicenses = { startActivity(Intent(this, LicensesActivity::class.java)) },
+                        onErrorDismiss = { installError = null },
+                        onPlay = { launchGame(it) },
+                        canEditAdmirals = { canEditAdmirals(it) },
+                        onEditAdmirals = { admiralGameDir = it.savedir },
+                        onUninstall = { item ->
+                            gameList?.uninstall(item)
+                            items = gameList?.snapshot() ?: emptyList()
+                        },
+                    )
+                }
             }
         }
     }
@@ -133,12 +156,15 @@ private fun LauncherScreen(
     onLicenses: () -> Unit,
     onErrorDismiss: () -> Unit,
     onPlay: (Item) -> Unit,
+    canEditAdmirals: (Item) -> Boolean,
+    onEditAdmirals: (Item) -> Unit,
     onUninstall: (Item) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
     var uninstallItem by remember { mutableStateOf<Item?>(null) }
     var errorItem by remember { mutableStateOf<Item?>(null) }
+    var ctxItem by remember { mutableStateOf<Item?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().background(AliceColors.Background)) {
         // топ-бар
@@ -182,35 +208,52 @@ private fun LauncherScreen(
         } else {
             LazyColumn {
                 items(items) { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = {
-                                    if (item.error != null) errorItem = item else onPlay(item)
-                                },
-                                onLongClick = { uninstallItem = item },
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = {
+                                        if (item.error != null) errorItem = item else onPlay(item)
+                                    },
+                                    onLongClick = { ctxItem = item },
+                                )
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val icon = remember(item.path) { item.getIconBitmap(96) }
+                            if (icon != null) {
+                                Image(
+                                    bitmap = icon.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp),
+                                )
+                            } else {
+                                Box(modifier = Modifier.size(40.dp))
+                            }
+                            Text(
+                                item.name,
+                                fontSize = 18.sp,
+                                color = if (item.error != null) AliceColors.TextSecondary
+                                        else AliceColors.TextPrimary,
+                                modifier = Modifier.padding(start = 16.dp),
                             )
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val icon = remember(item.path) { item.getIconBitmap(96) }
-                        if (icon != null) {
-                            Image(
-                                bitmap = icon.asImageBitmap(),
-                                contentDescription = null,
-                                modifier = Modifier.size(40.dp),
-                            )
-                        } else {
-                            Box(modifier = Modifier.size(40.dp))
                         }
-                        Text(
-                            item.name,
-                            fontSize = 18.sp,
-                            color = if (item.error != null) AliceColors.TextSecondary
-                                    else AliceColors.TextPrimary,
-                            modifier = Modifier.padding(start = 16.dp),
-                        )
+                        DropdownMenu(
+                            expanded = ctxItem === item,
+                            onDismissRequest = { ctxItem = null },
+                        ) {
+                            if (canEditAdmirals(item)) {
+                                DropdownMenuItem(
+                                    text = { Text("Редактор адмиралов") },
+                                    onClick = { ctxItem = null; onEditAdmirals(item) },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Удалить") },
+                                onClick = { ctxItem = null; uninstallItem = item },
+                            )
+                        }
                     }
                 }
             }

@@ -99,17 +99,23 @@ object CheatSession {
 @Composable
 fun CheatsScreen(
     onTranslateToggle: (Boolean) -> Unit,
+    showInfiniteEvents: Boolean = false,
+    infiniteEventsOn: Boolean = false,
+    onInfiniteEventsToggle: (Boolean) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val landscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     var editRow by remember { mutableStateOf<CheatSession.Row?>(null) }
+    val controls: @Composable () -> Unit = {
+        CheatControls(onTranslateToggle, showInfiniteEvents, infiniteEventsOn, onInfiniteEventsToggle)
+    }
 
     ScreenScaffold(title = "Читы", onBack = onBack) {
         if (landscape) {
             Row(modifier = Modifier.fillMaxSize()) {
-                Column(modifier = Modifier.weight(2f)) {
-                    CheatControls(onTranslateToggle)
+                Column(modifier = Modifier.weight(2f).padding(end = 4.dp)) {
+                    controls()
                 }
                 Box(
                     modifier = Modifier
@@ -122,7 +128,7 @@ fun CheatsScreen(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
-                CheatControls(onTranslateToggle)
+                controls()
                 CheatList(modifier = Modifier.weight(1f)) { editRow = it }
             }
         }
@@ -134,8 +140,20 @@ fun CheatsScreen(
 }
 
 @Composable
-private fun CheatControls(onTranslateToggle: (Boolean) -> Unit) {
+private fun CheatControls(
+    onTranslateToggle: (Boolean) -> Unit,
+    showInfiniteEvents: Boolean,
+    infiniteEventsOn: Boolean,
+    onInfiniteEventsToggle: (Boolean) -> Unit,
+) {
+    var infiniteOn by remember { mutableStateOf(infiniteEventsOn) }
     Column(modifier = Modifier.fillMaxWidth()) {
+        if (showInfiniteEvents) {
+            LabeledSwitch("Бесконечные события (фаза не кончается)", infiniteOn) { on ->
+                infiniteOn = on
+                onInfiniteEventsToggle(on)
+            }
+        }
         LabeledSwitch("Переводить имена (ML Kit)", CheatSession.translateNames) { on ->
             CheatSession.translateNames = on
             onTranslateToggle(on)
