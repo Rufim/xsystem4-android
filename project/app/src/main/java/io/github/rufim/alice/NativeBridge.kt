@@ -22,10 +22,25 @@ object NativeBridge {
     }
 
     fun setTts(on: Boolean) = nativeSetTts(on)
+    /** Межбуквенный интервал (только xsystem4): base/large — доли кегля в сотых
+     *  (3 = 0.03), threshold — размер шрифта, с которого действует large. */
+    fun setLetterSpacing(base: Int, large: Int, threshold: Int) =
+        nativeSetLetterSpacing(base / 100f, large / 100f, threshold.toFloat())
+    /** Режим «бесконечные события» (Daiteikoku, только xsystem4): после проигрыша
+     *  выбранного события снова показать меню, а не завершать фазу. */
+    fun setInfiniteEvents(on: Boolean) = nativeSetInfiniteEvents(on)
     fun duck(on: Boolean, percent: Int) = nativeDuckMusic(on, percent)
     fun advance() = nativeAdvance()
     /** Счётчик посимвольной отрисовки текста — растёт, пока на экране модалка. */
     fun uiDrawCount(): Int = nativeUiDrawCount()
+    /** Счётчик отрисовки через NewFont.DrawChar; только xsystem4. */
+    fun nfCharCount(): Int = nativeNfCharCount()
+
+    /** Забрать (и очистить) фактически отрисованный текст; только xsystem4.
+     *  Прокачка листания сравнивает его с прочитанной репликой, отличая второй
+     *  бокс той же реплики от модалки-уведомления. */
+    fun takeDrawnText(): String =
+        String(nativeTakeDrawnBytes(), charset("Shift_JIS"))
     /** Номера сценарных страниц (через запятую), текст которых не озвучивать
      *  (только xsystem35 — метод есть лишь в его .so). */
     fun setSuppressPages(pages: String) = nativeSetSuppressPages(pages)
@@ -68,9 +83,13 @@ object NativeBridge {
 
     private external fun nativeInit()
     private external fun nativeSetTts(on: Boolean)
+    private external fun nativeSetLetterSpacing(base: Float, large: Float, threshold: Float)
+    private external fun nativeSetInfiniteEvents(on: Boolean)
     private external fun nativeDuckMusic(on: Boolean, percent: Int)
     private external fun nativeAdvance()
     private external fun nativeUiDrawCount(): Int
+    private external fun nativeNfCharCount(): Int
+    private external fun nativeTakeDrawnBytes(): ByteArray
     private external fun nativeSetSuppressPages(pages: String)
     private external fun nativeOpenEngineMenu()
     private external fun nativeSetReadWindows(csv: String)

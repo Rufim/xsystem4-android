@@ -69,6 +69,7 @@ abstract class EngineActivity : SDLActivity() {
         tts.setRate(prefs.getInt("tts_rate", 100) / 100f)
         tts.setPitch(prefs.getInt("tts_pitch", 100) / 100f)
         tts.autoAdvance = prefs.getBoolean("auto_advance", false)
+        tts.readNames = !prefs.getBoolean("tts_skip_names", false)
         tts.advance = { advanceGame() }
         if (supportsTextFilters) {
             applySuppressPages(prefs.getString("tts_suppress_pages", defaultSuppressPages())!!)
@@ -87,12 +88,21 @@ abstract class EngineActivity : SDLActivity() {
         // сохранённый режим перевода имён в читах
         CheatSession.translateNames = prefs.getBoolean("translate_names", false)
         if (CheatSession.translateNames) enableNameTranslation(true)
+
+        // «бесконечные события» (только System 4): восстановить сохранённый режим
+        if (supportsInfiniteEvents)
+            NativeBridge.setInfiniteEvents(prefs.getBoolean("infinite_events", false))
+
+        // межбуквенный интервал (только System 4): применить сохранённые значения
+        if (supportsFontSettings)
+            applyLetterSpacing(prefs)
     }
 
     /** Панель и плавающие элементы поверх игры. */
     private fun setupOverlay() {
         val actions = buildList {
             add(PanelAction("Озвучка (TTS)") { showTtsSettings() })
+            if (supportsFontSettings) add(PanelAction("Шрифт") { showFontSettings() })
             add(PanelAction("История") { showHistory() })
             add(PanelAction("Читы") { showCheats() })
             addAll(extraPanelActions())
@@ -103,6 +113,12 @@ abstract class EngineActivity : SDLActivity() {
                 actions = actions,
                 onPlayPause = { if (tts.stopped) tts.play() else tts.stop() },
             )
+        }
+    }
+
+    private fun showFontSettings() {
+        ComposeOverlay.showFullscreen(this) { dismiss ->
+            FontSettingsScreen(prefs = prefs, onBack = dismiss)
         }
     }
 
@@ -131,6 +147,12 @@ abstract class EngineActivity : SDLActivity() {
                 onTranslateToggle = { on ->
                     prefs.edit().putBoolean("translate_names", on).apply()
                     enableNameTranslation(on)
+                },
+                showInfiniteEvents = supportsInfiniteEvents,
+                infiniteEventsOn = prefs.getBoolean("infinite_events", false),
+                onInfiniteEventsToggle = { on ->
+                    prefs.edit().putBoolean("infinite_events", on).apply()
+                    NativeBridge.setInfiniteEvents(on)
                 },
                 onBack = dismiss,
             )
@@ -186,6 +208,15 @@ abstract class EngineActivity : SDLActivity() {
 
     /** Профиль озвучки (механика завершения чтения и прокачки листания). */
     protected open val ttsProfile: TtsProfile get() = TtsProfile.SYSTEM4
+
+    /** Есть ли режим «бесконечные события» (Daiteikoku/System 4): тумблер в
+     *  читах + вызовы NativeBridge.setInfiniteEvents. Только System 4 — символ
+     *  nativeSetInfiniteEvents есть лишь в libxsystem4.so. */
+    protected open val supportsInfiniteEvents: Boolean get() = false
+
+    /** Есть ли экран настроек шрифта (межбуквенный интервал через nativeSetLetterSpacing).
+     *  Только System 4 — символ nativeSetLetterSpacing есть лишь в libxsystem4.so. */
+    protected open val supportsFontSettings: Boolean get() = false
 
     /** Синтетический тап в центр игровой поверхности — «дальше» в диалоге
      *  (тот же путь, что палец; SDL-клавиши/SDL_PushEvent игру на Android не листают).

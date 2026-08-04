@@ -16,6 +16,12 @@ class XSystem4Activity : EngineActivity() {
         const val COMMAND_OPEN_PLAYING_MANUAL = 0x8000  // xsystem4/src/hll/SystemService.c
     }
 
+    // Режим «бесконечные события» — только System 4 (нативный хук в libxsystem4.so).
+    override val supportsInfiniteEvents: Boolean get() = true
+
+    // Настройки шрифта (межбуквенный интервал) — только System 4.
+    override val supportsFontSettings: Boolean get() = true
+
     override fun getLibraries(): Array<String> {
         return arrayOf("SDL2", "xsystem4")
     }
