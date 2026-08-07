@@ -61,13 +61,28 @@ data class Item(val name: String, val path: File, val homedir: File, val savedir
                 iniFile = File(dir, "AliceStart.ini")
             val icon = findIcon(dir)
             val ini = System40Ini.parse(iniFile)
-            if (ini.gameName == null) {
-                val err = context.getString(R.string.toast_no_GameName, iniFile.path)
-                Log.w("GameList", err)
-                return Item(dir.name, dir, homedir, null, icon, err)
+            // GameName есть НЕ во всех ini. У Tsumamigui 3 он лежит только в
+            // AliceStart.ini, а System40.ini (который читается первым, потому что
+            // в нём ViewWidth/ViewHeight) его не содержит вовсе. Раньше такая игра
+            // целиком помечалась ошибкой и не запускалась.
+            // Порядок: имя из прочитанного ini -> из соседнего ini -> имя ПАПКИ.
+            var name = ini.gameName
+            var savefolder = ini.SaveFolder
+            if (name == null || savefolder == null) {
+                val alt = if (iniFile.name == "System40.ini") File(dir, "AliceStart.ini")
+                          else File(dir, "System40.ini")
+                if (alt.exists()) {
+                    val altIni = System40Ini.parse(alt)
+                    if (name == null) name = altIni.gameName
+                    if (savefolder == null) savefolder = altIni.SaveFolder
+                }
             }
-            val savedir = File(dir, ini.SaveFolder ?: "SaveData")
-            return Item(ini.gameName, dir, homedir, savedir, icon, null, Engine.XSYSTEM4)
+            if (name == null) {
+                Log.i("GameList", "no GameName in ${iniFile.path}, using folder name '${dir.name}'")
+                name = dir.name
+            }
+            val savedir = File(dir, savefolder ?: "SaveData")
+            return Item(name, dir, homedir, savedir, icon, null, Engine.XSYSTEM4)
         }
 
         private fun findIcon(dir: File): File? {
